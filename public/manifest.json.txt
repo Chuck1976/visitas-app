@@ -1,0 +1,11 @@
+{
+  "name": "Visitas Comerciales",
+  "short_name": "Visitas",
+  "description": "Agenda privada de visitas comerciales realizadas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#f97316",
+  "orientation": "portrait",
+  "icons": []
+}
