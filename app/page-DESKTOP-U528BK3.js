@@ -237,293 +237,6 @@ export default function App() {
           <button onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}>›</button>
         </div>
       </div>
-"use client";
-import React, { useEffect, useMemo, useState } from "react";
-
-const STORAGE_KEY = "visitas_app_pro_v3";
-
-const valores = [
-  { value: "malo", label: "Malo - no volver", color: "#ef4444" },
-  { value: "normal", label: "Normal - pasar más adelante", color: "#f59e0b" },
-  { value: "buena", label: "Buena - recontactar pronto", color: "#3b82f6" },
-  { value: "muy_buena", label: "Muy buena - cita/listo para agendar", color: "#22c55e" },
-];
-
-const tiposVisita = [
-  "Cliente potencial - Primera visita",
-  "Cliente potencial - Cita/Demo/Presentación",
-  "Ya cliente - Resolución de problemas/asesoramiento",
-  "Ya cliente - Seguimiento/nuevas propuestas",
-];
-
-function pad(n) {
-  return String(n).padStart(2, "0");
-}
-
-function dateKey(date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function parseKey(key) {
-  const [y, m, d] = key.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function loadData() {
-  if (typeof window === "undefined") return { visits: [], closedDays: [] };
-
-  try {
-    const newData = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (newData) return newData;
-
-    const oldData = JSON.parse(localStorage.getItem("visitas_app_pro_v2"));
-    return oldData || { visits: [], closedDays: [] };
-  } catch {
-    return { visits: [], closedDays: [] };
-  }
-}
-
-function saveData(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-function labelValue(value) {
-  return valores.find(v => v.value === value)?.label || value;
-}
-
-function colorValue(value) {
-  return valores.find(v => v.value === value)?.color || "#94a3b8";
-}
-
-function makeCalendarDays(monthDate) {
-  const year = monthDate.getFullYear();
-  const month = monthDate.getMonth();
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month + 1, 0);
-  const startOffset = (first.getDay() + 6) % 7;
-  const days = [];
-
-  for (let i = 0; i < startOffset; i++) {
-    days.push(new Date(year, month, 1 - startOffset + i));
-  }
-
-  for (let d = 1; d <= last.getDate(); d++) {
-    days.push(new Date(year, month, d));
-  }
-
-  while (days.length % 7 !== 0) {
-    const lastDay = days[days.length - 1];
-    days.push(new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate() + 1));
-  }
-
-  return days;
-}
-
-export default function App() {
-  const today = new Date();
-  const todayKey = dateKey(today);
-
-  const [visits, setVisits] = useState([]);
-  const [closedDays, setClosedDays] = useState([]);
-  const [monthDate, setMonthDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState(todayKey);
-
-  const [showForm, setShowForm] = useState(false);
-  const [showCloseForm, setShowCloseForm] = useState(false);
-  const [openVisit, setOpenVisit] = useState(null);
-  const [openClosedDay, setOpenClosedDay] = useState(null);
-  const [locationStatus, setLocationStatus] = useState("");
-
-  const [form, setForm] = useState({
-    businessName: "",
-    contactName: "",
-    locality: "",
-    visitType: tiposVisita[0],
-    notes: "",
-    visitValue: "normal",
-    latitude: "",
-    longitude: "",
-    locationAccuracy: "",
-  });
-
-  const [closeForm, setCloseForm] = useState({
-    type: "Día completo",
-    reason: "",
-  });
-
-  useEffect(() => {
-    const data = loadData();
-    setVisits(data.visits || []);
-    setClosedDays(data.closedDays || []);
-  }, []);
-
-  const days = useMemo(() => makeCalendarDays(monthDate), [monthDate]);
-
-  const visitsByDay = useMemo(() => {
-    const map = {};
-    visits.forEach(v => {
-      if (!map[v.date]) map[v.date] = [];
-      map[v.date].push(v);
-    });
-    return map;
-  }, [visits]);
-
-  const closedByDay = useMemo(() => {
-    const map = {};
-    closedDays.forEach(c => {
-      map[c.date] = c;
-    });
-    return map;
-  }, [closedDays]);
-
-  const selectedVisits = visits.filter(v => v.date === selectedDate);
-  const selectedClosed = closedByDay[selectedDate];
-
-  function persist(updatedVisits, updatedClosedDays) {
-    saveData({ visits: updatedVisits, closedDays: updatedClosedDays });
-  }
-
-  function getCurrentLocation() {
-    if (!navigator.geolocation) {
-      setLocationStatus("Este navegador no permite geolocalización.");
-      return;
-    }
-
-    setLocationStatus("Buscando ubicación...");
-
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        setForm(prev => ({
-          ...prev,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          locationAccuracy: Math.round(position.coords.accuracy),
-        }));
-        setLocationStatus("Ubicación guardada correctamente.");
-      },
-      () => {
-        setLocationStatus("No se pudo obtener la ubicación. Revisa permisos del navegador.");
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
-    );
-  }
-
-  function addVisit(e) {
-    e.preventDefault();
-
-    const newVisit = {
-      id: Date.now(),
-      date: selectedDate,
-      createdAt: new Date().toISOString(),
-      ...form,
-    };
-
-    const updated = [...visits, newVisit];
-    setVisits(updated);
-    persist(updated, closedDays);
-
-    setForm({
-      businessName: "",
-      contactName: "",
-      locality: "",
-      visitType: tiposVisita[0],
-      notes: "",
-      visitValue: "normal",
-      latitude: "",
-      longitude: "",
-      locationAccuracy: "",
-    });
-
-    setLocationStatus("");
-    setShowForm(false);
-  }
-
-  function closeDay(e) {
-    e.preventDefault();
-
-    const newClosed = {
-      id: Date.now(),
-      date: selectedDate,
-      ...closeForm,
-    };
-
-    const updatedClosedDays = [
-      ...closedDays.filter(c => c.date !== selectedDate),
-      newClosed,
-    ];
-
-    setClosedDays(updatedClosedDays);
-    persist(visits, updatedClosedDays);
-
-    setCloseForm({ type: "Día completo", reason: "" });
-    setShowCloseForm(false);
-  }
-
-  function deleteVisit(id) {
-    const updated = visits.filter(v => v.id !== id);
-    setVisits(updated);
-    persist(updated, closedDays);
-    setOpenVisit(null);
-  }
-
-  function deleteClosedDay(date) {
-    const updatedClosedDays = closedDays.filter(c => c.date !== date);
-    setClosedDays(updatedClosedDays);
-    persist(visits, updatedClosedDays);
-    setOpenClosedDay(null);
-  }
-
-  function exportCSV() {
-    const rows = [
-      ["Fecha", "Negocio", "Referente", "Localidad", "Tipo visita", "Valor", "Notas", "Latitud", "Longitud", "Precisión metros"],
-      ...selectedVisits.map(v => [
-        v.date,
-        v.businessName,
-        v.contactName,
-        v.locality || "",
-        v.visitType || "",
-        labelValue(v.visitValue),
-        v.notes,
-        v.latitude || "",
-        v.longitude || "",
-        v.locationAccuracy || "",
-      ]),
-    ];
-
-    const csv = rows
-      .map(row => row.map(cell => `"${String(cell || "").replaceAll('"', '""')}"`).join(";"))
-      .join("\n");
-
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `visitas-${selectedDate}.csv`;
-    a.click();
-  }
-
-  return (
-    <div className="app">
-      <div className="topbar">
-        <div>
-          <div className="small">Agenda de visitas realizadas</div>
-          <h1>
-            {monthDate.toLocaleDateString("es-ES", {
-              month: "long",
-              year: "numeric",
-            })}
-          </h1>
-        </div>
-
-        <div className="buttons">
-          <button onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}>‹</button>
-          <button onClick={() => { setMonthDate(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(todayKey); }}>Hoy</button>
-          <button onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}>›</button>
-        </div>
-      </div>
 
       <div className="layout">
         <div className="calendar">
@@ -553,7 +266,9 @@ export default function App() {
                   {dayVisits.length > 0 && <b>{dayVisits.length}</b>}
                 </div>
 
-                {closed && <div className="closedTag">Cerrado / no trabajado</div>}
+                {closed && (
+                  <div className="closedTag">Cerrado / no trabajado</div>
+                )}
 
                 <div className="tags">
                   {dayVisits.slice(0, 5).map(v => (
@@ -565,7 +280,9 @@ export default function App() {
                       {v.businessName}
                     </div>
                   ))}
-                  {dayVisits.length > 5 && <div className="more">+{dayVisits.length - 5} más</div>}
+                  {dayVisits.length > 5 && (
+                    <div className="more">+{dayVisits.length - 5} más</div>
+                  )}
                 </div>
               </button>
             );
@@ -609,7 +326,6 @@ export default function App() {
               <button className="visitCard" key={v.id} onClick={() => setOpenVisit(v)}>
                 <strong>{v.businessName}</strong>
                 <span>{v.contactName || "Sin referente"}</span>
-                <span>{v.locality || "Sin localidad"}</span>
                 <small>{v.visitType}</small>
                 <em style={{ backgroundColor: colorValue(v.visitValue) }}>
                   {labelValue(v.visitValue)}
@@ -642,29 +358,10 @@ export default function App() {
             <label>Nombre referente</label>
             <input value={form.contactName} onChange={e => setForm({ ...form, contactName: e.target.value })} />
 
-            <label>Localidad</label>
-            <input
-              placeholder="Ej. Almería, El Ejido, Granada..."
-              value={form.locality}
-              onChange={e => setForm({ ...form, locality: e.target.value })}
-            />
-
             <label>Valor de la visita</label>
             <select value={form.visitValue} onChange={e => setForm({ ...form, visitValue: e.target.value })}>
               {valores.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
             </select>
-
-            <button type="button" className="secondaryBtn" onClick={getCurrentLocation}>
-              📍 Guardar ubicación actual
-            </button>
-
-            {locationStatus && <p className="small">{locationStatus}</p>}
-
-            {form.latitude && form.longitude && (
-              <p className="small">
-                Ubicación: {Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)}
-              </p>
-            )}
 
             <label>Notas</label>
             <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
@@ -715,23 +412,8 @@ export default function App() {
 
             <h3>{openVisit.businessName}</h3>
             <p><b>Referente:</b> {openVisit.contactName || "—"}</p>
-            <p><b>Localidad:</b> {openVisit.locality || "—"}</p>
             <p><b>Tipo:</b> {openVisit.visitType || "—"}</p>
             <p><b>Valor:</b> {labelValue(openVisit.visitValue)}</p>
-
-            {openVisit.latitude && openVisit.longitude && (
-              <p>
-                <b>Ubicación:</b>{" "}
-                <a
-                  href={`https://www.google.com/maps?q=${openVisit.latitude},${openVisit.longitude}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Ver en Google Maps
-                </a>
-              </p>
-            )}
-
             <p><b>Notas:</b></p>
             <div className="notes">{openVisit.notes || "Sin notas"}</div>
 
@@ -761,6 +443,7 @@ export default function App() {
           </div>
         </div>
       )}
+    
     </div>
   );
 }
