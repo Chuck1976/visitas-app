@@ -1,7 +1,8 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-const STORAGE_KEY = "visitas_app_pro_v3";
+const STORAGE_KEY = "visitas_app_pro_v4";
+const OLD_KEYS = ["visitas_app_pro_v3", "visitas_app_pro_v2"];
 
 const valores = [
   { value: "malo", label: "Malo - no volver", color: "#ef4444" },
@@ -30,22 +31,33 @@ function parseKey(key) {
   return new Date(y, m - 1, d);
 }
 
+function normalizeData(data) {
+  return {
+    visits: Array.isArray(data?.visits) ? data.visits : [],
+    closedDays: Array.isArray(data?.closedDays) ? data.closedDays : [],
+  };
+}
+
 function loadData() {
   if (typeof window === "undefined") return { visits: [], closedDays: [] };
 
   try {
-    const newData = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (newData) return newData;
+    const current = localStorage.getItem(STORAGE_KEY);
+    if (current) return normalizeData(JSON.parse(current));
 
-    const oldData = JSON.parse(localStorage.getItem("visitas_app_pro_v2"));
-    return oldData || { visits: [], closedDays: [] };
+    for (const key of OLD_KEYS) {
+      const old = localStorage.getItem(key);
+      if (old) return normalizeData(JSON.parse(old));
+    }
+
+    return { visits: [], closedDays: [] };
   } catch {
     return { visits: [], closedDays: [] };
   }
 }
 
 function saveData(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeData(data)));
 }
 
 function labelValue(value) {
@@ -83,6 +95,7 @@ function makeCalendarDays(monthDate) {
 export default function App() {
   const today = new Date();
   const todayKey = dateKey(today);
+  const importInputRef = useRef(null);
 
   const [visits, setVisits] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
@@ -94,11 +107,14 @@ export default function App() {
   const [openVisit, setOpenVisit] = useState(null);
   const [openClosedDay, setOpenClosedDay] = useState(null);
   const [locationStatus, setLocationStatus] = useState("");
+  const [backupStatus, setBackupStatus] = useState("");
 
   const [form, setForm] = useState({
     businessName: "",
     contactName: "",
     locality: "",
+    neighborhood: "",
+    address: "",
     visitType: tiposVisita[0],
     notes: "",
     visitValue: "normal",
@@ -144,6 +160,41 @@ export default function App() {
     saveData({ visits: updatedVisits, closedDays: updatedClosedDays });
   }
 
+  async function reverseGeocode(latitude, longitude) {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1&accept-language=es`;
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("No se pudo traducir la ubicación.");
+
+    const data = await response.json();
+    const address = data.address || {};
+
+    return {
+      locality:
+        address.city ||
+        address.town ||
+        address.village ||
+        address.municipality ||
+        address.county ||
+        "",
+      neighborhood:
+        address.neighbourhood ||
+        address.suburb ||
+        address.quarter ||
+        address.city_district ||
+        address.district ||
+        "",
+      addressText:
+        data.display_name ||
+        [
+          address.road,
+          address.house_number,
+          address.postcode,
+          address.city || address.town || address.village,
+        ].filter(Boolean).join(", "),
+    };
+  }
+
   function getCurrentLocation() {
     if (!navigator.geolocation) {
       setLocationStatus("Este navegador no permite geolocalización.");
@@ -153,21 +204,43 @@ export default function App() {
     setLocationStatus("Buscando ubicación...");
 
     navigator.geolocation.getCurrentPosition(
-      position => {
+      async position => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const accuracy = Math.round(position.coords.accuracy);
+
         setForm(prev => ({
           ...prev,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          locationAccuracy: Math.round(position.coords.accuracy),
+          latitude,
+          longitude,
+          locationAccuracy: accuracy,
         }));
-        setLocationStatus("Ubicación guardada correctamente.");
+
+        try {
+          setLocationStatus("Ubicación encontrada. Traduciendo dirección...");
+          const geo = await reverseGeocode(latitude, longitude);
+
+          setForm(prev => ({
+            ...prev,
+            latitude,
+            longitude,
+            locationAccuracy: accuracy,
+            locality: prev.locality || geo.locality,
+            neighborhood: prev.neighborhood || geo.neighborhood,
+            address: prev.address || geo.addressText,
+          }));
+
+          setLocationStatus("Ubicación y dirección guardadas correctamente.");
+        } catch {
+          setLocationStatus("Ubicación guardada, pero no se pudo obtener localidad/barrio.");
+        }
       },
       () => {
         setLocationStatus("No se pudo obtener la ubicación. Revisa permisos del navegador.");
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 12000,
         maximumAge: 0,
       }
     );
@@ -191,6 +264,8 @@ export default function App() {
       businessName: "",
       contactName: "",
       locality: "",
+      neighborhood: "",
+      address: "",
       visitType: tiposVisita[0],
       notes: "",
       visitValue: "normal",
@@ -240,12 +315,14 @@ export default function App() {
 
   function exportCSV() {
     const rows = [
-      ["Fecha", "Negocio", "Referente", "Localidad", "Tipo visita", "Valor", "Notas", "Latitud", "Longitud", "Precisión metros"],
+      ["Fecha", "Negocio", "Referente", "Localidad", "Barrio/Zona", "Dirección", "Tipo visita", "Valor", "Notas", "Latitud", "Longitud", "Precisión metros"],
       ...selectedVisits.map(v => [
         v.date,
         v.businessName,
         v.contactName,
         v.locality || "",
+        v.neighborhood || "",
+        v.address || "",
         v.visitType || "",
         labelValue(v.visitValue),
         v.notes,
@@ -264,6 +341,57 @@ export default function App() {
     a.href = URL.createObjectURL(blob);
     a.download = `visitas-${selectedDate}.csv`;
     a.click();
+  }
+
+  function exportAllBackup() {
+    const backup = {
+      app: "visitas-app",
+      version: 4,
+      exportedAt: new Date().toISOString(),
+      data: { visits, closedDays },
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: "application/json;charset=utf-8;",
+    });
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `backup-visitas-${todayKey}.json`;
+    a.click();
+
+    setBackupStatus("Backup completo descargado.");
+  }
+
+  function importBackupFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = event => {
+      try {
+        const parsed = JSON.parse(event.target.result);
+        const importedData = normalizeData(parsed.data || parsed);
+
+        const ok = window.confirm(
+          "¿Quieres importar este backup? Esto sustituirá las visitas actuales de este navegador."
+        );
+
+        if (!ok) return;
+
+        setVisits(importedData.visits);
+        setClosedDays(importedData.closedDays);
+        saveData(importedData);
+        setBackupStatus("Backup importado correctamente.");
+      } catch {
+        setBackupStatus("No se pudo importar el archivo. Revisa que sea un backup válido.");
+      } finally {
+        e.target.value = "";
+      }
+    };
+
+    reader.readAsText(file);
   }
 
   return (
@@ -354,6 +482,24 @@ export default function App() {
             Exportar día a Excel/CSV
           </button>
 
+          <button className="secondaryBtn" onClick={exportAllBackup}>
+            Exportar backup completo
+          </button>
+
+          <button className="secondaryBtn" onClick={() => importInputRef.current?.click()}>
+            Importar backup
+          </button>
+
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={importBackupFile}
+            style={{ display: "none" }}
+          />
+
+          {backupStatus && <p className="small">{backupStatus}</p>}
+
           {selectedClosed && (
             <button className="closedCard" onClick={() => setOpenClosedDay(selectedClosed)}>
               <strong>{selectedClosed.type}</strong>
@@ -370,7 +516,7 @@ export default function App() {
               <button className="visitCard" key={v.id} onClick={() => setOpenVisit(v)}>
                 <strong>{v.businessName}</strong>
                 <span>{v.contactName || "Sin referente"}</span>
-                <span>{v.locality || "Sin localidad"}</span>
+                <span>{v.locality || "Sin localidad"}{v.neighborhood ? ` · ${v.neighborhood}` : ""}</span>
                 <small>{v.visitType}</small>
                 <em style={{ backgroundColor: colorValue(v.visitValue) }}>
                   {labelValue(v.visitValue)}
@@ -404,11 +550,13 @@ export default function App() {
             <input value={form.contactName} onChange={e => setForm({ ...form, contactName: e.target.value })} />
 
             <label>Localidad</label>
-            <input
-              placeholder="Ej. Almería, El Ejido, Granada..."
-              value={form.locality}
-              onChange={e => setForm({ ...form, locality: e.target.value })}
-            />
+            <input value={form.locality} onChange={e => setForm({ ...form, locality: e.target.value })} />
+
+            <label>Barrio / zona</label>
+            <input value={form.neighborhood} onChange={e => setForm({ ...form, neighborhood: e.target.value })} />
+
+            <label>Dirección aproximada</label>
+            <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
 
             <label>Valor de la visita</label>
             <select value={form.visitValue} onChange={e => setForm({ ...form, visitValue: e.target.value })}>
@@ -477,6 +625,8 @@ export default function App() {
             <h3>{openVisit.businessName}</h3>
             <p><b>Referente:</b> {openVisit.contactName || "—"}</p>
             <p><b>Localidad:</b> {openVisit.locality || "—"}</p>
+            <p><b>Barrio/Zona:</b> {openVisit.neighborhood || "—"}</p>
+            <p><b>Dirección:</b> {openVisit.address || "—"}</p>
             <p><b>Tipo:</b> {openVisit.visitType || "—"}</p>
             <p><b>Valor:</b> {labelValue(openVisit.visitValue)}</p>
 
