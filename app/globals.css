@@ -277,15 +277,18 @@ button {
   inset: 0;
   background: rgba(0,0,0,0.65);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 16px;
+  padding: 20px 16px;
   z-index: 50;
+  overflow-y: auto;
 }
 
 .box {
   width: 100%;
   max-width: 560px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: #1f2937;
   color: #f8fafc;
   border-radius: 20px;
@@ -339,7 +342,6 @@ textarea {
   white-space: pre-wrap;
   border: 1px solid #374151;
 }
-
 .deleteBtn {
   width: 100%;
   margin-top: 16px;
@@ -357,6 +359,16 @@ textarea {
   .layout {
     display: block;
   }
+
+.modal {
+  align-items: flex-start;
+  padding: 12px;
+}
+
+.box {
+  max-height: calc(100vh - 24px);
+  padding: 16px;
+}
 
   .calendar {
     grid-template-columns: repeat(7, 82px);
