@@ -105,6 +105,7 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [showCloseForm, setShowCloseForm] = useState(false);
   const [openVisit, setOpenVisit] = useState(null);
+  const [editingVisitId, setEditingVisitId] = useState(null);
   const [openClosedDay, setOpenClosedDay] = useState(null);
   const [locationStatus, setLocationStatus] = useState("");
   const [backupStatus, setBackupStatus] = useState("");
@@ -246,9 +247,25 @@ export default function App() {
     );
   }
 
-  function addVisit(e) {
-    e.preventDefault();
+ function addVisit(e) {
+  e.preventDefault();
 
+  if (editingVisitId) {
+    const updatedVisits = visits.map(v => {
+      if (v.id !== editingVisitId) return v;
+
+      return {
+        ...v,
+        ...form,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    setVisits(updatedVisits);
+    persist(updatedVisits, closedDays);
+
+    setEditingVisitId(null);
+  } else {
     const newVisit = {
       id: Date.now(),
       date: selectedDate,
@@ -259,24 +276,25 @@ export default function App() {
     const updated = [...visits, newVisit];
     setVisits(updated);
     persist(updated, closedDays);
-
-    setForm({
-      businessName: "",
-      contactName: "",
-      locality: "",
-      neighborhood: "",
-      address: "",
-      visitType: tiposVisita[0],
-      notes: "",
-      visitValue: "normal",
-      latitude: "",
-      longitude: "",
-      locationAccuracy: "",
-    });
-
-    setLocationStatus("");
-    setShowForm(false);
   }
+
+  setForm({
+    businessName: "",
+    contactName: "",
+    locality: "",
+    neighborhood: "",
+    address: "",
+    visitType: tiposVisita[0],
+    notes: "",
+    visitValue: "normal",
+    latitude: "",
+    longitude: "",
+    locationAccuracy: "",
+  });
+
+  setLocationStatus("");
+  setShowForm(false);
+}
 
   function closeDay(e) {
     e.preventDefault();
@@ -298,7 +316,27 @@ export default function App() {
     setCloseForm({ type: "Día completo", reason: "" });
     setShowCloseForm(false);
   }
+    function editVisit(visit) {
+  setEditingVisitId(visit.id);
 
+  setForm({
+    businessName: visit.businessName || "",
+    contactName: visit.contactName || "",
+    locality: visit.locality || "",
+    neighborhood: visit.neighborhood || "",
+    address: visit.address || "",
+    visitType: visit.visitType || tiposVisita[0],
+    notes: visit.notes || "",
+    visitValue: visit.visitValue || "normal",
+    latitude: visit.latitude || "",
+    longitude: visit.longitude || "",
+    locationAccuracy: visit.locationAccuracy || "",
+  });
+
+  setSelectedDate(visit.date);
+  setOpenVisit(null);
+  setShowForm(true);
+}
   function deleteVisit(id) {
     const updated = visits.filter(v => v.id !== id);
     setVisits(updated);
@@ -531,7 +569,7 @@ export default function App() {
         <div className="modal">
           <form className="box" onSubmit={addVisit}>
             <div className="modalHead">
-              <h2>Nueva visita</h2>
+              <h2>{editingVisitId ? "Editar visita" : "Nueva visita"}</h2>
               <button type="button" onClick={() => setShowForm(false)}>×</button>
             </div>
 
@@ -578,7 +616,9 @@ export default function App() {
             <label>Notas</label>
             <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
 
-            <button className="mainBtn" type="submit">Guardar visita</button>
+            <button className="mainBtn" type="submit">
+  {editingVisitId ? "Guardar cambios" : "Guardar visita"}
+</button>
           </form>
         </div>
       )}
@@ -645,7 +685,12 @@ export default function App() {
 
             <p><b>Notas:</b></p>
             <div className="notes">{openVisit.notes || "Sin notas"}</div>
-
+<button
+  className="mainBtn"
+  onClick={() => editVisit(openVisit)}
+>
+  ✏️ Editar visita
+</button>
             <button className="deleteBtn" onClick={() => deleteVisit(openVisit.id)}>
               Eliminar visita
             </button>
