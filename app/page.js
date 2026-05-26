@@ -129,11 +129,26 @@ export default function App() {
     reason: "",
   });
 
-  useEffect(() => {
+ useEffect(() => {
+  function refreshData() {
     const data = loadData();
+
     setVisits(data.visits || []);
     setClosedDays(data.closedDays || []);
-  }, []);
+  }
+
+  refreshData();
+ window.addEventListener("focus", refreshData);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      refreshData();
+    }
+  });
+
+  return () => {
+    window.removeEventListener("focus", refreshData);
+  };
+}, []);
 
   const days = useMemo(() => makeCalendarDays(monthDate), [monthDate]);
 
