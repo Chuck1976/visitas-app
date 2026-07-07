@@ -24,6 +24,7 @@ const EMPTY_VISIT_FORM = {
   contactName: "",
   locality: "",
   neighborhood: "",
+  postalCode: "",
   address: "",
   visitType: tiposVisita[0],
   notes: "",
@@ -123,6 +124,30 @@ function colorValue(value) {
   return valores.find(v => v.value === value)?.color || "#94a3b8";
 }
 
+function normalizeSearchText(text) {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function businessKey(visit) {
+  const name = normalizeSearchText(visit.businessName);
+  const postalCode = normalizeSearchText(visit.postalCode);
+  const locality = normalizeSearchText(visit.locality);
+  return [name, postalCode, locality].filter(Boolean).join("|");
+}
+
+function formatVisitDate(date) {
+  if (!date) return "Sin fecha";
+  return parseKey(date).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
 function makeCalendarDays(monthDate) {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -159,13 +184,18 @@ export default function App() {
 
   const [showForm, setShowForm] = useState(false);
   const [showCloseForm, setShowCloseForm] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [openVisit, setOpenVisit] = useState(null);
+  const [openBusiness, setOpenBusiness] = useState(null);
   const [editingVisitId, setEditingVisitId] = useState(null);
   const [openClosedDay, setOpenClosedDay] = useState(null);
   const [locationStatus, setLocationStatus] = useState("");
   const [backupStatus, setBackupStatus] = useState("");
 
   const [form, setForm] = useState({ ...EMPTY_VISIT_FORM });
+  const [searchMode, setSearchMode] = useState("businessName");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showBadSearchResults, setShowBadSearchResults] = useState(false);
 
   const [closeForm, setCloseForm] = useState({
     type: "Día completo",
@@ -215,6 +245,51 @@ export default function App() {
   const selectedVisits = visits.filter(v => v.date === selectedDate);
   const selectedClosed = closedByDay[selectedDate];
 
+  const searchResults = useMemo(() => {
+    const term = normalizeSearchText(searchTerm);
+    if (!term) return [];
+
+    const filtered = visits.filter(visit => {
+      if (!showBadSearchResults && visit.visitValue === "malo") {
+        return false;
+      }
+
+      if (searchMode === "postalCode") {
+        return normalizeSearchText(visit.postalCode).includes(term);
+      }
+
+      const businessName = normalizeSearchText(visit.businessName);
+      return businessName.length > 0 && businessName.includes(term);
+    });
+
+    const grouped = new Map();
+
+    filtered.forEach(visit => {
+      const key = businessKey(visit) || String(visit.id);
+      const current = grouped.get(key);
+
+      if (current) {
+        current.visits.push(visit);
+      } else {
+        grouped.set(key, { key, visits: [visit] });
+      }
+    });
+
+    return Array.from(grouped.values())
+      .map(group => {
+        const sortedVisits = [...group.visits].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        const latestVisit = sortedVisits[0];
+
+        return {
+          ...group,
+          visits: sortedVisits,
+          latestVisit,
+          totalVisits: sortedVisits.length,
+        };
+      })
+      .sort((a, b) => String(b.latestVisit.date).localeCompare(String(a.latestVisit.date)));
+  }, [searchMode, searchTerm, showBadSearchResults, visits]);
+
   function persist(updatedVisits, updatedClosedDays) {
     saveData({ visits: updatedVisits, closedDays: updatedClosedDays });
   }
@@ -250,13 +325,14 @@ export default function App() {
         address.municipality ||
         address.county ||
         "",
-      neighborhood:
+            neighborhood:
         address.neighbourhood ||
         address.suburb ||
         address.quarter ||
         address.city_district ||
         address.district ||
         "",
+      postalCode: address.postcode || "",
       addressText:
         data.display_name ||
         [
@@ -300,6 +376,7 @@ export default function App() {
             locationAccuracy: accuracy,
             locality: prev.locality || geo.locality,
             neighborhood: prev.neighborhood || geo.neighborhood,
+            postalCode: prev.postalCode || geo.postalCode,
             address: prev.address || geo.addressText,
           }));
 
@@ -381,6 +458,7 @@ export default function App() {
     contactName: visit.contactName || "",
     locality: visit.locality || "",
     neighborhood: visit.neighborhood || "",
+    postalCode: visit.postalCode || "",
     address: visit.address || "",
     visitType: visit.visitType || tiposVisita[0],
     notes: visit.notes || "",
@@ -392,6 +470,7 @@ export default function App() {
 
   setSelectedDate(visit.date);
   setOpenVisit(null);
+  setOpenBusiness(null);
   setShowForm(true);
 }
   function deleteVisit(id) {
@@ -414,13 +493,14 @@ export default function App() {
 
   function exportCSV() {
     const rows = [
-      ["Fecha", "Negocio", "Referente", "Localidad", "Barrio/Zona", "Dirección", "Tipo visita", "Valor", "Notas", "Latitud", "Longitud", "Precisión metros"],
+      ["Fecha", "Negocio", "Referente", "Localidad", "Barrio/Zona", "Código postal", "Dirección", "Tipo visita", "Valor", "Notas", "Latitud", "Longitud", "Precisión metros"],
       ...selectedVisits.map(v => [
         v.date,
         v.businessName,
         v.contactName,
         v.locality || "",
         v.neighborhood || "",
+        v.postalCode || "",
         v.address || "",
         v.visitType || "",
         labelValue(v.visitValue),
@@ -587,6 +667,10 @@ export default function App() {
             Cerrar día / parte del día
           </button>
 
+          <button className="secondaryBtn" onClick={() => setShowSearch(true)}>
+            🔎 Buscar visitas
+          </button>
+
           <button className="secondaryBtn" onClick={exportCSV} disabled={selectedVisits.length === 0}>
             Exportar día a Excel/CSV
           </button>
@@ -626,6 +710,7 @@ export default function App() {
                 <strong>{v.businessName}</strong>
                 <span>{v.contactName || "Sin referente"}</span>
                 <span>{v.locality || "Sin localidad"}{v.neighborhood ? ` · ${v.neighborhood}` : ""}</span>
+                {v.postalCode && <span>CP {v.postalCode}</span>}
                 <small>{v.visitType}</small>
                 <em style={{ backgroundColor: colorValue(v.visitValue) }}>
                   {labelValue(v.visitValue)}
@@ -663,6 +748,13 @@ export default function App() {
 
             <label>Barrio / zona</label>
             <input value={form.neighborhood} onChange={e => setForm({ ...form, neighborhood: e.target.value })} />
+
+            <label>Código postal</label>
+            <input
+              inputMode="numeric"
+              value={form.postalCode}
+              onChange={e => setForm({ ...form, postalCode: e.target.value })}
+            />
 
             <label>Dirección aproximada</label>
             <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
@@ -737,6 +829,7 @@ export default function App() {
             <p><b>Referente:</b> {openVisit.contactName || "—"}</p>
             <p><b>Localidad:</b> {openVisit.locality || "—"}</p>
             <p><b>Barrio/Zona:</b> {openVisit.neighborhood || "—"}</p>
+            <p><b>Código postal:</b> {openVisit.postalCode || "—"}</p>
             <p><b>Dirección:</b> {openVisit.address || "—"}</p>
             <p><b>Tipo:</b> {openVisit.visitType || "—"}</p>
             <p><b>Valor:</b> {labelValue(openVisit.visitValue)}</p>
@@ -765,6 +858,138 @@ export default function App() {
             <button className="deleteBtn" onClick={() => deleteVisit(openVisit.id)}>
               Eliminar visita
             </button>
+          </div>
+        </div>
+      )}
+
+      {showSearch && (
+        <div className="modal">
+          <div className="box searchBox">
+            <div className="modalHead">
+              <h2>Buscar visitas</h2>
+              <button onClick={() => setShowSearch(false)}>×</button>
+            </div>
+
+            <div className="searchTabs">
+              <button
+                type="button"
+                className={searchMode === "businessName" ? "active" : ""}
+                onClick={() => {
+                  setSearchMode("businessName");
+                  setSearchTerm("");
+                }}
+              >
+                Por negocio
+              </button>
+              <button
+                type="button"
+                className={searchMode === "postalCode" ? "active" : ""}
+                onClick={() => {
+                  setSearchMode("postalCode");
+                  setSearchTerm("");
+                }}
+              >
+                Por código postal
+              </button>
+            </div>
+
+            <label>{searchMode === "postalCode" ? "Código postal" : "Nombre del negocio"}</label>
+            <input
+              autoFocus
+              value={searchTerm}
+              inputMode={searchMode === "postalCode" ? "numeric" : "text"}
+              placeholder={searchMode === "postalCode" ? "Ej. 28010" : "Ej. Bar Radiance"}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+
+            <label className="checkLine">
+              <input
+                type="checkbox"
+                checked={showBadSearchResults}
+                onChange={e => setShowBadSearchResults(e.target.checked)}
+              />
+              Mostrar también los marcados como “Malo - no volver”
+            </label>
+
+            {searchTerm.trim() && (
+              <p className="small">
+                {searchResults.length} {searchResults.length === 1 ? "negocio encontrado" : "negocios encontrados"}
+              </p>
+            )}
+
+            <div className="searchResults">
+              {!searchTerm.trim() && (
+                <div className="empty">Escribe algo para empezar la búsqueda.</div>
+              )}
+
+              {searchTerm.trim() && searchResults.length === 0 && (
+                <div className="empty">No he encontrado negocios con esa búsqueda.</div>
+              )}
+
+              {searchResults.map(result => (
+                <button
+                  type="button"
+                  className="businessCard"
+                  key={result.key}
+                  onClick={() => setOpenBusiness(result)}
+                >
+                  <strong>{result.latestVisit.businessName}</strong>
+                  <span>
+                    {[
+                      result.latestVisit.postalCode ? `CP ${result.latestVisit.postalCode}` : "",
+                      result.latestVisit.locality,
+                      result.latestVisit.neighborhood,
+                    ].filter(Boolean).join(" · ") || "Sin zona indicada"}
+                  </span>
+                  <span>Última visita: {formatVisitDate(result.latestVisit.date)}</span>
+                  <span>{result.totalVisits} {result.totalVisits === 1 ? "visita registrada" : "visitas registradas"}</span>
+                  <em style={{ backgroundColor: colorValue(result.latestVisit.visitValue) }}>
+                    {labelValue(result.latestVisit.visitValue)}
+                  </em>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {openBusiness && (
+        <div className="modal">
+          <div className="box">
+            <div className="modalHead">
+              <h2>Ficha de negocio</h2>
+              <button onClick={() => setOpenBusiness(null)}>×</button>
+            </div>
+
+            <h3>{openBusiness.latestVisit.businessName}</h3>
+            <p><b>Referente:</b> {openBusiness.latestVisit.contactName || "—"}</p>
+            <p><b>Localidad:</b> {openBusiness.latestVisit.locality || "—"}</p>
+            <p><b>Barrio/Zona:</b> {openBusiness.latestVisit.neighborhood || "—"}</p>
+            <p><b>Código postal:</b> {openBusiness.latestVisit.postalCode || "—"}</p>
+            <p><b>Dirección:</b> {openBusiness.latestVisit.address || "—"}</p>
+            <p><b>Última valoración:</b> {labelValue(openBusiness.latestVisit.visitValue)}</p>
+
+            <h3>Historial de visitas</h3>
+            <div className="historyList">
+              {openBusiness.visits.map(visit => (
+                <button
+                  type="button"
+                  className="historyCard"
+                  key={visit.id}
+                  onClick={() => {
+                    setOpenBusiness(null);
+                    setOpenVisit(visit);
+                  }}
+                >
+                  <strong>{formatVisitDate(visit.date)}</strong>
+                  <span>{visit.visitType || "Sin tipo de visita"}</span>
+                  <em style={{ backgroundColor: colorValue(visit.visitValue) }}>
+                    {labelValue(visit.visitValue)}
+                  </em>
+                  {visit.notes && <small>{visit.notes}</small>}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

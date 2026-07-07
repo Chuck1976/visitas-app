@@ -278,6 +278,71 @@ button {
   width: fit-content;
 }
 
+.searchBox {
+  max-width: 680px;
+}
+
+.searchTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+
+.searchTabs button {
+  background: #111827;
+  border-color: #374151;
+}
+
+.searchTabs button.active {
+  background: #f97316;
+  color: #111827;
+  border-color: #f97316;
+  font-weight: bold;
+}
+
+.searchResults,
+.historyList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.businessCard,
+.historyCard {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #111827;
+  border: 1px solid #374151;
+}
+
+.businessCard span,
+.historyCard span,
+.historyCard small {
+  color: #cbd5e1;
+}
+
+.businessCard em,
+.historyCard em {
+  color: white;
+  font-style: normal;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.historyCard small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
 .empty {
   border: 1px dashed #64748b;
   padding: 24px;
@@ -345,6 +410,20 @@ textarea {
   color: #f8fafc;
 }
 
+.checkLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  color: #cbd5e1;
+  font-weight: normal;
+}
+
+.checkLine input {
+  width: auto;
+  margin: 0;
+}
+
 textarea {
   min-height: 110px;
 }
@@ -371,21 +450,40 @@ textarea {
   }
 
   .topbar {
-    gap: 12px;
-    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+    align-items: stretch;
+    padding: 16px;
   }
 
   .brandBlock {
-    gap: 10px;
+    gap: 12px;
+    align-items: center;
   }
 
   .brandLogo {
-    width: 92px;
-    max-width: 30vw;
+    width: 96px;
+    max-width: 28vw;
   }
 
   h1 {
-    font-size: 24px;
+    font-size: 28px;
+    line-height: 1.05;
+  }
+
+  .small {
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .buttons {
+    justify-content: center;
+    align-self: stretch;
+  }
+
+  .buttons button {
+    min-width: 58px;
+    padding: 10px 14px;
   }
 
   .layout {
