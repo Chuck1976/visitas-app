@@ -223,6 +223,14 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // La app sigue funcionando aunque el móvil no permita instalarla como PWA.
+    });
+  }, []);
+
   const days = useMemo(() => makeCalendarDays(monthDate), [monthDate]);
 
   const visitsByDay = useMemo(() => {
