@@ -18,6 +18,22 @@ const tiposVisita = [
   "Ya cliente - Seguimiento/nuevas propuestas",
 ];
 
+const EMPTY_VISIT_FORM = {
+  businessName: "",
+  contactName: "",
+  locality: "",
+  neighborhood: "",
+  address: "",
+  visitType: tiposVisita[0],
+  notes: "",
+  visitValue: "normal",
+  latitude: "",
+  longitude: "",
+  locationAccuracy: "",
+};
+
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 function pad(n) {
   return String(n).padStart(2, "0");
 }
@@ -36,6 +52,44 @@ function normalizeData(data) {
     visits: Array.isArray(data?.visits) ? data.visits : [],
     closedDays: Array.isArray(data?.closedDays) ? data.closedDays : [],
   };
+}
+
+function validateImportedData(data) {
+  if (!data || !Array.isArray(data.visits) || !Array.isArray(data.closedDays)) {
+    throw new Error("Estructura de backup no válida");
+  }
+
+  const visitsAreValid = data.visits.every(visit =>
+    visit &&
+    (typeof visit.id === "string" || typeof visit.id === "number") &&
+    typeof visit.date === "string" &&
+    DATE_KEY_PATTERN.test(visit.date) &&
+    typeof visit.businessName === "string" &&
+    visit.businessName.trim().length > 0
+  );
+
+  const closedDaysAreValid = data.closedDays.every(closedDay =>
+    closedDay &&
+    (typeof closedDay.id === "string" || typeof closedDay.id === "number") &&
+    typeof closedDay.date === "string" &&
+    DATE_KEY_PATTERN.test(closedDay.date) &&
+    typeof closedDay.type === "string"
+  );
+
+  if (!visitsAreValid || !closedDaysAreValid) {
+    throw new Error("El backup contiene registros no válidos");
+  }
+
+  return { visits: data.visits, closedDays: data.closedDays };
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function loadData() {
@@ -110,45 +164,33 @@ export default function App() {
   const [locationStatus, setLocationStatus] = useState("");
   const [backupStatus, setBackupStatus] = useState("");
 
-  const [form, setForm] = useState({
-    businessName: "",
-    contactName: "",
-    locality: "",
-    neighborhood: "",
-    address: "",
-    visitType: tiposVisita[0],
-    notes: "",
-    visitValue: "normal",
-    latitude: "",
-    longitude: "",
-    locationAccuracy: "",
-  });
+  const [form, setForm] = useState({ ...EMPTY_VISIT_FORM });
 
   const [closeForm, setCloseForm] = useState({
     type: "Día completo",
     reason: "",
   });
 
- useEffect(() => {
-  function refreshData() {
-    const data = loadData();
-
-    setVisits(data.visits || []);
-    setClosedDays(data.closedDays || []);
-  }
-
-  refreshData();
- window.addEventListener("focus", refreshData);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      refreshData();
+  useEffect(() => {
+    function refreshData() {
+      const data = loadData();
+      setVisits(data.visits);
+      setClosedDays(data.closedDays);
     }
-  });
 
-  return () => {
-    window.removeEventListener("focus", refreshData);
-  };
-}, []);
+    function refreshVisibleData() {
+      if (document.visibilityState === "visible") refreshData();
+    }
+
+    refreshData();
+    window.addEventListener("focus", refreshData);
+    document.addEventListener("visibilitychange", refreshVisibleData);
+
+    return () => {
+      window.removeEventListener("focus", refreshData);
+      document.removeEventListener("visibilitychange", refreshVisibleData);
+    };
+  }, []);
 
   const days = useMemo(() => makeCalendarDays(monthDate), [monthDate]);
 
@@ -174,6 +216,20 @@ export default function App() {
 
   function persist(updatedVisits, updatedClosedDays) {
     saveData({ visits: updatedVisits, closedDays: updatedClosedDays });
+  }
+
+  function closeVisitForm() {
+    setShowForm(false);
+    setEditingVisitId(null);
+    setForm({ ...EMPTY_VISIT_FORM });
+    setLocationStatus("");
+  }
+
+  function openNewVisitForm() {
+    setEditingVisitId(null);
+    setForm({ ...EMPTY_VISIT_FORM });
+    setLocationStatus("");
+    setShowForm(true);
   }
 
   async function reverseGeocode(latitude, longitude) {
@@ -262,8 +318,8 @@ export default function App() {
     );
   }
 
- function addVisit(e) {
-  e.preventDefault();
+  function addVisit(e) {
+    e.preventDefault();
 
   if (editingVisitId) {
     const updatedVisits = visits.map(v => {
@@ -293,23 +349,8 @@ export default function App() {
     persist(updated, closedDays);
   }
 
-  setForm({
-    businessName: "",
-    contactName: "",
-    locality: "",
-    neighborhood: "",
-    address: "",
-    visitType: tiposVisita[0],
-    notes: "",
-    visitValue: "normal",
-    latitude: "",
-    longitude: "",
-    locationAccuracy: "",
-  });
-
-  setLocationStatus("");
-  setShowForm(false);
-}
+    closeVisitForm();
+  }
 
   function closeDay(e) {
     e.preventDefault();
@@ -353,6 +394,8 @@ export default function App() {
   setShowForm(true);
 }
   function deleteVisit(id) {
+    if (!window.confirm("¿Seguro que quieres eliminar esta visita?")) return;
+
     const updated = visits.filter(v => v.id !== id);
     setVisits(updated);
     persist(updated, closedDays);
@@ -360,6 +403,8 @@ export default function App() {
   }
 
   function deleteClosedDay(date) {
+    if (!window.confirm("¿Seguro que quieres eliminar este cierre?")) return;
+
     const updatedClosedDays = closedDays.filter(c => c.date !== date);
     setClosedDays(updatedClosedDays);
     persist(visits, updatedClosedDays);
@@ -390,10 +435,7 @@ export default function App() {
       .join("\n");
 
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `visitas-${selectedDate}.csv`;
-    a.click();
+    downloadBlob(blob, `visitas-${selectedDate}.csv`);
   }
 
   function exportAllBackup() {
@@ -408,10 +450,7 @@ export default function App() {
       type: "application/json;charset=utf-8;",
     });
 
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `backup-visitas-${todayKey}.json`;
-    a.click();
+    downloadBlob(blob, `backup-visitas-${todayKey}.json`);
 
     setBackupStatus("Backup completo descargado.");
   }
@@ -420,12 +459,18 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 5 * 1024 * 1024) {
+      setBackupStatus("El backup es demasiado grande (máximo 5 MB).");
+      e.target.value = "";
+      return;
+    }
+
     const reader = new FileReader();
 
     reader.onload = event => {
       try {
         const parsed = JSON.parse(event.target.result);
-        const importedData = normalizeData(parsed.data || parsed);
+        const importedData = validateImportedData(parsed.data || parsed);
 
         const ok = window.confirm(
           "¿Quieres importar este backup? Esto sustituirá las visitas actuales de este navegador."
@@ -523,7 +568,7 @@ export default function App() {
             })}
           </h2>
 
-          <button className="mainBtn" onClick={() => setShowForm(true)}>
+          <button className="mainBtn" onClick={openNewVisitForm}>
             + Añadir visita
           </button>
 
@@ -585,7 +630,7 @@ export default function App() {
           <form className="box" onSubmit={addVisit}>
             <div className="modalHead">
               <h2>{editingVisitId ? "Editar visita" : "Nueva visita"}</h2>
-              <button type="button" onClick={() => setShowForm(false)}>×</button>
+              <button type="button" onClick={closeVisitForm}>×</button>
             </div>
 
             <label>Fecha</label>
