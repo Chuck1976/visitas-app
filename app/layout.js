@@ -12,8 +12,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Visitas Comerciales",
+  title: "Visitas Pro App",
   description: "Agenda privada de visitas comerciales",
+  icons: {
+    icon: "/visitas-pro-icon.png",
+    apple: "/visitas-pro-icon.png",
+  },
 };
 
 export default function RootLayout({ children }) {

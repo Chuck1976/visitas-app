@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const STORAGE_KEY = "visitas_app_pro_v4";
@@ -495,14 +496,24 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
-        <div>
-          <div className="small">Agenda de visitas realizadas</div>
-          <h1>
-            {monthDate.toLocaleDateString("es-ES", {
-              month: "long",
-              year: "numeric",
-            })}
-          </h1>
+        <div className="brandBlock">
+          <Image
+            className="brandLogo"
+            src="/visitas-pro-logo.png"
+            alt="Visitas Pro App"
+            width={335}
+            height={335}
+            priority
+          />
+          <div>
+            <div className="small">Agenda de visitas realizadas</div>
+            <h1>
+              {monthDate.toLocaleDateString("es-ES", {
+                month: "long",
+                year: "numeric",
+              })}
+            </h1>
+          </div>
         </div>
 
         <div className="buttons">

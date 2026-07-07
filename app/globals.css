@@ -28,6 +28,22 @@ body {
   margin-bottom: 18px;
 }
 
+.brandBlock {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.brandLogo {
+  width: 120px;
+  max-width: 34vw;
+  height: auto;
+  display: block;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+}
+
 h1 {
   margin: 4px 0 0;
   text-transform: capitalize;
@@ -352,6 +368,24 @@ textarea {
 @media (max-width: 850px) {
   .app {
     padding: 10px;
+  }
+
+  .topbar {
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .brandBlock {
+    gap: 10px;
+  }
+
+  .brandLogo {
+    width: 92px;
+    max-width: 30vw;
+  }
+
+  h1 {
+    font-size: 24px;
   }
 
   .layout {
