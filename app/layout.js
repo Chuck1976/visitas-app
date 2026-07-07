@@ -14,9 +14,10 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "Visitas Pro App",
   description: "Agenda privada de visitas comerciales",
+  manifest: "/manifest.json",
   icons: {
-    icon: "/visitas-pro-icon.png",
-    apple: "/visitas-pro-icon.png",
+    icon: "/visitas-pro-icon-192.png",
+    apple: "/visitas-pro-icon-192.png",
   },
 };
 
