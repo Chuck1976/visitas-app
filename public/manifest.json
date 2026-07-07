@@ -2,6 +2,7 @@
   "name": "Visitas Pro App",
   "short_name": "Visitas Pro",
   "description": "Agenda privada de visitas comerciales",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -12,13 +13,25 @@
       "src": "/visitas-pro-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/visitas-pro-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/visitas-pro-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/visitas-pro-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

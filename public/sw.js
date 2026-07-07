@@ -1,9 +1,11 @@
-const CACHE_NAME = "visitas-pro-app-v1";
+const CACHE_NAME = "visitas-pro-app-v2";
 const APP_SHELL = [
   "/",
   "/manifest.json",
   "/visitas-pro-icon-192.png",
   "/visitas-pro-icon-512.png",
+  "/visitas-pro-maskable-192.png",
+  "/visitas-pro-maskable-512.png",
 ];
 
 self.addEventListener("install", event => {
