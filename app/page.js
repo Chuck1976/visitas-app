@@ -19,6 +19,9 @@ const tiposVisita = [
   "Ya cliente - Seguimiento/nuevas propuestas",
 ];
 
+const FOLLOW_UP_VALUE = "muy_buena";
+const FOLLOW_UP_DAYS = 1;
+
 const EMPTY_VISIT_FORM = {
   businessName: "",
   contactName: "",
@@ -47,6 +50,20 @@ function dateKey(date) {
 function parseKey(key) {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+function addDaysKey(key, days) {
+  const date = parseKey(key);
+  date.setDate(date.getDate() + days);
+  return dateKey(date);
+}
+
+function followUpDateKey(key) {
+  let nextKey = addDaysKey(key, FOLLOW_UP_DAYS);
+  while (parseKey(nextKey).getDay() === 0) {
+    nextKey = addDaysKey(nextKey, 1);
+  }
+  return nextKey;
 }
 
 function normalizeData(data) {
@@ -233,6 +250,26 @@ export default function App() {
 
   const days = useMemo(() => makeCalendarDays(monthDate), [monthDate]);
 
+  const followUpReminders = useMemo(() => {
+    return visits
+      .filter(visit => visit.visitValue === FOLLOW_UP_VALUE)
+      .filter(visit => {
+        const key = businessKey(visit);
+        if (!key) return false;
+
+        return !visits.some(otherVisit =>
+          otherVisit.id !== visit.id &&
+          businessKey(otherVisit) === key &&
+          String(otherVisit.date) > String(visit.date)
+        );
+      })
+      .map(visit => ({
+        id: `follow-up-${visit.id}`,
+        date: followUpDateKey(visit.date),
+        visit,
+      }));
+  }, [visits]);
+
   const visitsByDay = useMemo(() => {
     const map = {};
     visits.forEach(v => {
@@ -241,6 +278,15 @@ export default function App() {
     });
     return map;
   }, [visits]);
+
+  const remindersByDay = useMemo(() => {
+    const map = {};
+    followUpReminders.forEach(reminder => {
+      if (!map[reminder.date]) map[reminder.date] = [];
+      map[reminder.date].push(reminder);
+    });
+    return map;
+  }, [followUpReminders]);
 
   const closedByDay = useMemo(() => {
     const map = {};
@@ -251,6 +297,7 @@ export default function App() {
   }, [closedDays]);
 
   const selectedVisits = visits.filter(v => v.date === selectedDate);
+  const selectedReminders = remindersByDay[selectedDate] || [];
   const selectedClosed = closedByDay[selectedDate];
 
   const searchResults = useMemo(() => {
@@ -632,17 +679,25 @@ export default function App() {
                 className={`day ${!isCurrentMonth ? "muted" : ""} ${isSelected ? "selected" : ""} ${closed ? "closed" : ""}`}
                 onClick={() => setSelectedDate(key)}
               >
+                {(() => {
+                  const dayReminders = remindersByDay[key] || [];
+                  const visitTagCount = Math.min(dayVisits.length, 4);
+                  const reminderTagCount = Math.max(0, 5 - visitTagCount);
+                  const totalDayItems = dayVisits.length + dayReminders.length;
+
+                  return (
+                    <>
                 <div className="dayHead">
                   <span className={`${isToday ? "today" : ""} ${isSunday ? "holiday" : ""}`}>
                     {day.getDate()}
                   </span>
-                  {dayVisits.length > 0 && <b>{dayVisits.length}</b>}
+                      {totalDayItems > 0 && <b>{totalDayItems}</b>}
                 </div>
 
                 {closed && <div className="closedTag">Cerrado / no trabajado</div>}
 
                 <div className="tags">
-                  {dayVisits.slice(0, 5).map(v => (
+                      {dayVisits.slice(0, 4).map(v => (
                     <div
                       key={v.id}
                       className="tag"
@@ -651,8 +706,19 @@ export default function App() {
                       {v.businessName}
                     </div>
                   ))}
-                  {dayVisits.length > 5 && <div className="more">+{dayVisits.length - 5} más</div>}
+                      {dayReminders.slice(0, reminderTagCount).map(reminder => (
+                        <div
+                          key={reminder.id}
+                          className="tag reminderTag"
+                        >
+                          Volver: {reminder.visit.businessName}
+                        </div>
+                      ))}
+                      {totalDayItems > 5 && <div className="more">+{totalDayItems - 5} más</div>}
                 </div>
+                    </>
+                  );
+                })()}
               </button>
             );
           })}
@@ -709,9 +775,23 @@ export default function App() {
           )}
 
           <div className="visitList">
-            {selectedVisits.length === 0 && !selectedClosed && (
+            {selectedVisits.length === 0 && selectedReminders.length === 0 && !selectedClosed && (
               <div className="empty">No hay visitas ni cierre marcado en este día.</div>
             )}
+
+            {selectedReminders.map(reminder => (
+              <button
+                className="reminderCard"
+                key={reminder.id}
+                onClick={() => setOpenVisit(reminder.visit)}
+              >
+                <strong>Volver a pasar</strong>
+                <span>{reminder.visit.businessName}</span>
+                <span>{reminder.visit.contactName || "Sin referente"}</span>
+                <small>Creado por visita marcada como “Muy buena” el {formatVisitDate(reminder.visit.date)}</small>
+                <em>Recordatorio</em>
+              </button>
+            ))}
 
             {selectedVisits.map(v => (
               <button className="visitCard" key={v.id} onClick={() => setOpenVisit(v)}>

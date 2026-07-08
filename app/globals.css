@@ -189,6 +189,11 @@ button {
   line-height: 1.1;
 }
 
+.reminderTag {
+  background: #a855f7;
+  color: #ffffff;
+}
+
 .more {
   font-size: 9px;
   color: #cbd5e1;
@@ -245,7 +250,8 @@ button {
 }
 
 .visitCard,
-.closedCard {
+.closedCard,
+.reminderCard {
   text-align: left;
   display: flex;
   flex-direction: column;
@@ -256,27 +262,39 @@ button {
   margin-bottom: 10px;
 }
 
+.reminderCard {
+  border-color: #a855f7;
+  background: #241638;
+}
+
 .closedCard {
   border-color: #f97316;
   background: #3b2f22;
 }
 
 .visitCard span,
-.closedCard span {
+.closedCard span,
+.reminderCard span {
   color: #cbd5e1;
 }
 
-.visitCard small {
+.visitCard small,
+.reminderCard small {
   color: #fb923c;
 }
 
-.visitCard em {
+.visitCard em,
+.reminderCard em {
   color: white;
   font-style: normal;
   font-size: 12px;
   padding: 4px 8px;
   border-radius: 999px;
   width: fit-content;
+}
+
+.reminderCard em {
+  background: #a855f7;
 }
 
 .searchBox {
@@ -617,6 +635,7 @@ textarea {
 
   .visitCard,
   .closedCard,
+  .reminderCard,
   .businessCard,
   .historyCard {
     padding: 14px;
@@ -626,14 +645,17 @@ textarea {
 
   .visitCard span,
   .closedCard span,
+  .reminderCard span,
   .businessCard span,
   .historyCard span,
   .historyCard small,
-  .visitCard small {
+  .visitCard small,
+  .reminderCard small {
     font-size: 18px;
   }
 
   .visitCard em,
+  .reminderCard em,
   .businessCard em,
   .historyCard em {
     font-size: 16px;
