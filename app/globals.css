@@ -552,15 +552,17 @@ textarea {
   }
 
   .calendar {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 5px;
+    grid-template-columns: repeat(7, 82px);
+    overflow-x: auto;
+    gap: 6px;
     padding: 10px;
     margin-bottom: 14px;
+    -webkit-overflow-scrolling: touch;
   }
 
   .day {
-    min-height: 78px;
-    padding: 4px;
+    min-height: 86px;
+    padding: 5px;
   }
 
   .side {
