@@ -494,8 +494,8 @@ textarea {
   border: none;
 }
 
-/* MOBILE */
-@media (max-width: 850px) {
+/* MOBILE / TABLET NARROW */
+@media (max-width: 1100px) {
   .app {
     padding: 10px;
   }
@@ -541,31 +541,31 @@ textarea {
     display: block;
   }
 
-.modal {
-  align-items: flex-start;
-  padding: 12px;
-}
+  .modal {
+    align-items: flex-start;
+    padding: 12px;
+  }
 
-.box {
-  max-height: calc(100vh - 24px);
-  padding: 16px;
-}
+  .box {
+    max-height: calc(100vh - 24px);
+    padding: 16px;
+  }
 
   .calendar {
-    grid-template-columns: repeat(7, 82px);
-    overflow-x: auto;
-    gap: 6px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 5px;
     padding: 10px;
     margin-bottom: 14px;
   }
 
   .day {
-    min-height: 86px;
-    padding: 5px;
+    min-height: 78px;
+    padding: 4px;
   }
 
   .side {
     padding: 14px;
+    margin-top: 14px;
   }
 
   .side h2 {
