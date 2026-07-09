@@ -19,8 +19,29 @@ const tiposVisita = [
   "Ya cliente - Seguimiento/nuevas propuestas",
 ];
 
-const FOLLOW_UP_VALUE = "muy_buena";
-const FOLLOW_UP_DAYS = 1;
+const REMINDER_PRESETS = {
+  muy_buena: [
+    { label: "3 días", days: 3 },
+    { label: "7 días", days: 7 },
+    { label: "10 días", days: 10 },
+  ],
+  buena: [
+    { label: "2 semanas", weeks: 2 },
+    { label: "4 semanas", weeks: 4 },
+    { label: "6 semanas", weeks: 6 },
+  ],
+  normal: [
+    { label: "3 meses", months: 3 },
+    { label: "6 meses", months: 6 },
+    { label: "9 meses", months: 9 },
+  ],
+};
+
+const REMINDER_STATUS = {
+  pending: "pending",
+  done: "done",
+  dismissed: "dismissed",
+};
 
 const EMPTY_VISIT_FORM = {
   businessName: "",
@@ -58,18 +79,130 @@ function addDaysKey(key, days) {
   return dateKey(date);
 }
 
-function followUpDateKey(key) {
-  let nextKey = addDaysKey(key, FOLLOW_UP_DAYS);
-  while (parseKey(nextKey).getDay() === 0) {
-    nextKey = addDaysKey(nextKey, 1);
+function addWeeksKey(key, weeks) {
+  return addDaysKey(key, weeks * 7);
+}
+
+function addMonthsKey(key, months) {
+  const date = parseKey(key);
+  const day = date.getDate();
+  const target = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const maxDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, maxDay));
+  return dateKey(target);
+}
+
+function suggestedReminderDateKey(baseDate, preset) {
+  if (preset.days) return addDaysKey(baseDate, preset.days);
+  if (preset.weeks) return addWeeksKey(baseDate, preset.weeks);
+  if (preset.months) return addMonthsKey(baseDate, preset.months);
+  return baseDate;
+}
+
+function reminderPresetsForValue(value) {
+  return REMINDER_PRESETS[value] || [];
+}
+
+function visitCanHaveReminder(visit) {
+  return reminderPresetsForValue(visit?.visitValue).length > 0;
+}
+
+function buildReminderFromVisit(visit, dueDate, existingReminder = null) {
+  if (!visitCanHaveReminder(visit) || !dueDate) return null;
+
+  const now = new Date().toISOString();
+
+  return {
+    id: existingReminder?.id || `reminder-${visit.id}-${Date.now()}`,
+    sourceVisitId: visit.id,
+    sourceVisitValue: visit.visitValue,
+    status: existingReminder?.status || REMINDER_STATUS.pending,
+    dueDate,
+    businessName: visit.businessName || "",
+    contactName: visit.contactName || "",
+    locality: visit.locality || "",
+    neighborhood: visit.neighborhood || "",
+    postalCode: visit.postalCode || "",
+    address: visit.address || "",
+    originalVisitDate: visit.date,
+    createdAt: existingReminder?.createdAt || now,
+    updatedAt: now,
+    completedAt: existingReminder?.completedAt || "",
+    completedVisitId: existingReminder?.completedVisitId || "",
+  };
+}
+
+function syncReminderSnapshotForVisit(currentReminders, visit) {
+  const sourceMatches = reminder =>
+    String(reminder.sourceVisitId) === String(visit.id);
+
+  return currentReminders.map(reminder => {
+    if (!sourceMatches(reminder)) return reminder;
+
+    return {
+      ...reminder,
+      sourceVisitValue: visit.visitValue,
+      businessName: visit.businessName || "",
+      contactName: visit.contactName || "",
+      locality: visit.locality || "",
+      neighborhood: visit.neighborhood || "",
+      postalCode: visit.postalCode || "",
+      address: visit.address || "",
+      originalVisitDate: visit.date,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+}
+
+function removePendingRemindersForVisit(currentReminders, visitId) {
+  return currentReminders.filter(reminder =>
+    String(reminder.sourceVisitId) !== String(visitId) ||
+    reminder.status !== REMINDER_STATUS.pending
+  );
+}
+
+function upsertPendingReminderForVisit(currentReminders, visit, dueDate) {
+  const existingIndex = currentReminders.findIndex(reminder =>
+    String(reminder.sourceVisitId) === String(visit.id) &&
+    reminder.status === REMINDER_STATUS.pending
+  );
+  const existingReminder = existingIndex >= 0 ? currentReminders[existingIndex] : null;
+  const reminder = buildReminderFromVisit(visit, dueDate, existingReminder);
+
+  if (!reminder) return currentReminders;
+
+  if (existingIndex >= 0) {
+    return currentReminders.map((currentReminder, index) =>
+      index === existingIndex ? reminder : currentReminder
+    );
   }
-  return nextKey;
+
+  return [...currentReminders, reminder];
+}
+
+function completeReminderInList(currentReminders, reminderId, completedVisitId, completedAt) {
+  if (!reminderId) return currentReminders;
+
+  return currentReminders.map(reminder => {
+    if (String(reminder.id) !== String(reminderId)) return reminder;
+
+    return {
+      ...reminder,
+      status: REMINDER_STATUS.done,
+      completedAt,
+      completedVisitId,
+      updatedAt: completedAt,
+    };
+  });
 }
 
 function normalizeData(data) {
+  const visits = Array.isArray(data?.visits) ? data.visits : [];
+
   return {
-    visits: Array.isArray(data?.visits) ? data.visits : [],
+    visits,
     closedDays: Array.isArray(data?.closedDays) ? data.closedDays : [],
+    reminders: Array.isArray(data?.reminders) ? data.reminders : [],
   };
 }
 
@@ -95,11 +228,27 @@ function validateImportedData(data) {
     typeof closedDay.type === "string"
   );
 
-  if (!visitsAreValid || !closedDaysAreValid) {
+  const hasImportedReminders = Array.isArray(data.reminders);
+  const reminders = hasImportedReminders ? data.reminders : [];
+  const remindersAreValid = reminders.every(reminder =>
+    reminder &&
+    (typeof reminder.id === "string" || typeof reminder.id === "number") &&
+    (typeof reminder.sourceVisitId === "string" || typeof reminder.sourceVisitId === "number") &&
+    typeof reminder.dueDate === "string" &&
+    DATE_KEY_PATTERN.test(reminder.dueDate) &&
+    typeof reminder.businessName === "string" &&
+    [REMINDER_STATUS.pending, REMINDER_STATUS.done, REMINDER_STATUS.dismissed].includes(reminder.status)
+  );
+
+  if (!visitsAreValid || !closedDaysAreValid || !remindersAreValid) {
     throw new Error("El backup contiene registros no válidos");
   }
 
-  return { visits: data.visits, closedDays: data.closedDays };
+  return normalizeData({
+    visits: data.visits,
+    closedDays: data.closedDays,
+    ...(hasImportedReminders ? { reminders } : {}),
+  });
 }
 
 function downloadBlob(blob, filename) {
@@ -112,7 +261,7 @@ function downloadBlob(blob, filename) {
 }
 
 function loadData() {
-  if (typeof window === "undefined") return { visits: [], closedDays: [] };
+  if (typeof window === "undefined") return normalizeData();
 
   try {
     const current = localStorage.getItem(STORAGE_KEY);
@@ -123,9 +272,9 @@ function loadData() {
       if (old) return normalizeData(JSON.parse(old));
     }
 
-    return { visits: [], closedDays: [] };
+    return normalizeData();
   } catch {
-    return { visits: [], closedDays: [] };
+    return normalizeData();
   }
 }
 
@@ -165,6 +314,23 @@ function formatVisitDate(date) {
   });
 }
 
+function reminderStatusLabel(status) {
+  if (status === REMINDER_STATUS.done) return "Pasado";
+  if (status === REMINDER_STATUS.dismissed) return "Descartado";
+  return "Pendiente";
+}
+
+function reminderMatchesSearch(reminder, term, mode) {
+  if (!term) return true;
+
+  if (mode === "postalCode") {
+    return normalizeSearchText(reminder.postalCode).includes(term);
+  }
+
+  const businessName = normalizeSearchText(reminder.businessName);
+  return businessName.length > 0 && businessName.includes(term);
+}
+
 function makeCalendarDays(monthDate) {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -196,6 +362,7 @@ export default function App() {
 
   const [visits, setVisits] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
+  const [reminders, setReminders] = useState([]);
   const [monthDate, setMonthDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(todayKey);
 
@@ -205,13 +372,19 @@ export default function App() {
   const [openVisit, setOpenVisit] = useState(null);
   const [openBusiness, setOpenBusiness] = useState(null);
   const [editingVisitId, setEditingVisitId] = useState(null);
+  const [activeReminderId, setActiveReminderId] = useState(null);
   const [openClosedDay, setOpenClosedDay] = useState(null);
   const [locationStatus, setLocationStatus] = useState("");
   const [backupStatus, setBackupStatus] = useState("");
 
   const [form, setForm] = useState({ ...EMPTY_VISIT_FORM });
+  const [pendingVisitSave, setPendingVisitSave] = useState(null);
+  const [reminderMonthDate, setReminderMonthDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [reminderSelectedDate, setReminderSelectedDate] = useState(todayKey);
+  const [searchScope, setSearchScope] = useState("visits");
   const [searchMode, setSearchMode] = useState("businessName");
   const [searchTerm, setSearchTerm] = useState("");
+  const [reminderSearchFilter, setReminderSearchFilter] = useState("pending");
   const [showBadSearchResults, setShowBadSearchResults] = useState(false);
 
   const [closeForm, setCloseForm] = useState({
@@ -224,6 +397,7 @@ export default function App() {
       const data = loadData();
       setVisits(data.visits);
       setClosedDays(data.closedDays);
+      setReminders(data.reminders);
     }
 
     function refreshVisibleData() {
@@ -249,26 +423,14 @@ export default function App() {
   }, []);
 
   const days = useMemo(() => makeCalendarDays(monthDate), [monthDate]);
+  const reminderCalendarDays = useMemo(() => makeCalendarDays(reminderMonthDate), [reminderMonthDate]);
+  const reminderPresetOptions = pendingVisitSave
+    ? reminderPresetsForValue(pendingVisitSave.visit.visitValue)
+    : [];
 
-  const followUpReminders = useMemo(() => {
-    return visits
-      .filter(visit => visit.visitValue === FOLLOW_UP_VALUE)
-      .filter(visit => {
-        const key = businessKey(visit);
-        if (!key) return false;
-
-        return !visits.some(otherVisit =>
-          otherVisit.id !== visit.id &&
-          businessKey(otherVisit) === key &&
-          String(otherVisit.date) > String(visit.date)
-        );
-      })
-      .map(visit => ({
-        id: `follow-up-${visit.id}`,
-        date: followUpDateKey(visit.date),
-        visit,
-      }));
-  }, [visits]);
+  const activeReminders = useMemo(() => {
+    return reminders.filter(reminder => reminder.status === REMINDER_STATUS.pending);
+  }, [reminders]);
 
   const visitsByDay = useMemo(() => {
     const map = {};
@@ -281,12 +443,12 @@ export default function App() {
 
   const remindersByDay = useMemo(() => {
     const map = {};
-    followUpReminders.forEach(reminder => {
-      if (!map[reminder.date]) map[reminder.date] = [];
-      map[reminder.date].push(reminder);
+    activeReminders.forEach(reminder => {
+      if (!map[reminder.dueDate]) map[reminder.dueDate] = [];
+      map[reminder.dueDate].push(reminder);
     });
     return map;
-  }, [followUpReminders]);
+  }, [activeReminders]);
 
   const closedByDay = useMemo(() => {
     const map = {};
@@ -345,21 +507,115 @@ export default function App() {
       .sort((a, b) => String(b.latestVisit.date).localeCompare(String(a.latestVisit.date)));
   }, [searchMode, searchTerm, showBadSearchResults, visits]);
 
-  function persist(updatedVisits, updatedClosedDays) {
-    saveData({ visits: updatedVisits, closedDays: updatedClosedDays });
+  const reminderSearchResults = useMemo(() => {
+    const term = normalizeSearchText(searchTerm);
+
+    return reminders
+      .filter(reminder => {
+        if (reminderSearchFilter === "pending" && reminder.status !== REMINDER_STATUS.pending) {
+          return false;
+        }
+
+        if (
+          reminderSearchFilter === "overdue" &&
+          !(reminder.status === REMINDER_STATUS.pending && String(reminder.dueDate) < String(todayKey))
+        ) {
+          return false;
+        }
+
+        return reminderMatchesSearch(reminder, term, searchMode);
+      })
+      .sort((a, b) => {
+        if (a.status !== b.status) {
+          return a.status === REMINDER_STATUS.pending ? -1 : 1;
+        }
+
+        return String(a.dueDate).localeCompare(String(b.dueDate));
+      });
+  }, [reminderSearchFilter, reminders, searchMode, searchTerm, todayKey]);
+
+  function persist(updatedVisits, updatedClosedDays, updatedReminders = reminders) {
+    saveData({
+      visits: updatedVisits,
+      closedDays: updatedClosedDays,
+      reminders: updatedReminders,
+    });
+  }
+
+  function startReminderSchedule(pendingSave) {
+    const presets = reminderPresetsForValue(pendingSave.visit.visitValue);
+    const defaultDate = suggestedReminderDateKey(pendingSave.visit.date, presets[0]);
+
+    setPendingVisitSave(pendingSave);
+    setReminderSelectedDate(defaultDate);
+    setReminderMonthDate(new Date(parseKey(defaultDate).getFullYear(), parseKey(defaultDate).getMonth(), 1));
+  }
+
+  function cancelReminderSchedule() {
+    setPendingVisitSave(null);
+  }
+
+  function finishVisitSave(pendingSave, dueDate = "") {
+    let updatedReminders = pendingSave.reminders;
+
+    if (dueDate) {
+      updatedReminders = upsertPendingReminderForVisit(updatedReminders, pendingSave.visit, dueDate);
+    }
+
+    updatedReminders = completeReminderInList(
+      updatedReminders,
+      pendingSave.completedReminderId,
+      pendingSave.visit?.id,
+      pendingSave.completedAt
+    );
+
+    setVisits(pendingSave.visits);
+    setReminders(updatedReminders);
+    persist(pendingSave.visits, closedDays, updatedReminders);
+    setPendingVisitSave(null);
+    closeVisitForm();
+  }
+
+  function confirmReminderSchedule() {
+    if (!pendingVisitSave || !reminderSelectedDate) return;
+    finishVisitSave(pendingVisitSave, reminderSelectedDate);
   }
 
   function closeVisitForm() {
     setShowForm(false);
     setEditingVisitId(null);
+    setActiveReminderId(null);
+    setPendingVisitSave(null);
     setForm({ ...EMPTY_VISIT_FORM });
     setLocationStatus("");
   }
 
   function openNewVisitForm() {
     setEditingVisitId(null);
+    setActiveReminderId(null);
     setForm({ ...EMPTY_VISIT_FORM });
     setLocationStatus("");
+    setShowForm(true);
+  }
+
+  function openVisitFromReminder(reminder) {
+    setEditingVisitId(null);
+    setActiveReminderId(reminder.id);
+    setSelectedDate(todayKey);
+    setForm({
+      ...EMPTY_VISIT_FORM,
+      businessName: reminder.businessName || "",
+      contactName: reminder.contactName || "",
+      locality: reminder.locality || "",
+      neighborhood: reminder.neighborhood || "",
+      postalCode: reminder.postalCode || "",
+      address: reminder.address || "",
+      visitType: tiposVisita[1],
+    });
+    setLocationStatus("");
+    setOpenVisit(null);
+    setOpenBusiness(null);
+    setShowSearch(false);
     setShowForm(true);
   }
 
@@ -454,35 +710,67 @@ export default function App() {
   function addVisit(e) {
     e.preventDefault();
 
-  if (editingVisitId) {
-    const updatedVisits = visits.map(v => {
-      if (v.id !== editingVisitId) return v;
+    const now = new Date().toISOString();
 
-      return {
-        ...v,
-        ...form,
-        updatedAt: new Date().toISOString(),
-      };
-    });
+    if (editingVisitId) {
+      let editedVisit = null;
+      const updatedVisits = visits.map(v => {
+        if (v.id !== editingVisitId) return v;
 
-    setVisits(updatedVisits);
-    persist(updatedVisits, closedDays);
+        editedVisit = {
+          ...v,
+          ...form,
+          updatedAt: now,
+        };
 
-    setEditingVisitId(null);
-  } else {
+        return editedVisit;
+      });
+
+      let updatedReminders = editedVisit
+        ? syncReminderSnapshotForVisit(reminders, editedVisit)
+        : reminders;
+
+      if (!editedVisit) {
+        closeVisitForm();
+        return;
+      }
+
+      if (!visitCanHaveReminder(editedVisit)) {
+        updatedReminders = removePendingRemindersForVisit(updatedReminders, editedVisit.id);
+        finishVisitSave({ visits: updatedVisits, reminders: updatedReminders, visit: editedVisit, completedAt: now });
+        return;
+      }
+
+      startReminderSchedule({
+        visits: updatedVisits,
+        reminders: updatedReminders,
+        visit: editedVisit,
+        completedAt: now,
+      });
+      return;
+    }
+
     const newVisit = {
       id: Date.now(),
       date: selectedDate,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
       ...form,
     };
 
-    const updated = [...visits, newVisit];
-    setVisits(updated);
-    persist(updated, closedDays);
-  }
+    const pendingSave = {
+      visits: [...visits, newVisit],
+      reminders,
+      visit: newVisit,
+      completedReminderId: activeReminderId,
+      completedAt: now,
+    };
 
-    closeVisitForm();
+    if (!visitCanHaveReminder(newVisit)) {
+      finishVisitSave(pendingSave);
+      return;
+    }
+
+    startReminderSchedule(pendingSave);
   }
 
   function closeDay(e) {
@@ -500,13 +788,14 @@ export default function App() {
     ];
 
     setClosedDays(updatedClosedDays);
-    persist(visits, updatedClosedDays);
+    persist(visits, updatedClosedDays, reminders);
 
     setCloseForm({ type: "Día completo", reason: "" });
     setShowCloseForm(false);
   }
     function editVisit(visit) {
   setEditingVisitId(visit.id);
+  setActiveReminderId(null);
 
   setForm({
     businessName: visit.businessName || "",
@@ -532,9 +821,61 @@ export default function App() {
     if (!window.confirm("¿Seguro que quieres eliminar esta visita?")) return;
 
     const updated = visits.filter(v => v.id !== id);
+    const updatedReminders = reminders.filter(reminder =>
+      String(reminder.sourceVisitId) !== String(id)
+    );
     setVisits(updated);
-    persist(updated, closedDays);
+    setReminders(updatedReminders);
+    persist(updated, closedDays, updatedReminders);
     setOpenVisit(null);
+  }
+
+  function updateReminderStatus(id, status, extra = {}) {
+    const updatedReminders = reminders.map(reminder => {
+      if (String(reminder.id) !== String(id)) return reminder;
+
+      return {
+        ...reminder,
+        ...extra,
+        status,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    setReminders(updatedReminders);
+    persist(visits, closedDays, updatedReminders);
+  }
+
+  function markReminderDone(reminder) {
+    updateReminderStatus(reminder.id, REMINDER_STATUS.done, {
+      completedAt: new Date().toISOString(),
+    });
+  }
+
+  function dismissReminder(reminder) {
+    updateReminderStatus(reminder.id, REMINDER_STATUS.dismissed);
+  }
+
+  function deleteReminder(reminder) {
+    if (!window.confirm("¿Seguro que quieres eliminar este recordatorio?")) return;
+
+    const updatedReminders = reminders.filter(currentReminder =>
+      String(currentReminder.id) !== String(reminder.id)
+    );
+
+    setReminders(updatedReminders);
+    persist(visits, closedDays, updatedReminders);
+  }
+
+  function openSourceVisitFromReminder(reminder) {
+    const sourceVisit = visits.find(visit =>
+      String(visit.id) === String(reminder.sourceVisitId)
+    );
+
+    if (sourceVisit) {
+      setOpenVisit(sourceVisit);
+      setShowSearch(false);
+    }
   }
 
   function deleteClosedDay(date) {
@@ -542,7 +883,7 @@ export default function App() {
 
     const updatedClosedDays = closedDays.filter(c => c.date !== date);
     setClosedDays(updatedClosedDays);
-    persist(visits, updatedClosedDays);
+    persist(visits, updatedClosedDays, reminders);
     setOpenClosedDay(null);
   }
 
@@ -577,9 +918,9 @@ export default function App() {
   function exportAllBackup() {
     const backup = {
       app: "visitas-app",
-      version: 4,
+      version: 5,
       exportedAt: new Date().toISOString(),
-      data: { visits, closedDays },
+      data: { visits, closedDays, reminders },
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
@@ -616,6 +957,7 @@ export default function App() {
 
         setVisits(importedData.visits);
         setClosedDays(importedData.closedDays);
+        setReminders(importedData.reminders);
         saveData(importedData);
         setBackupStatus("Backup importado correctamente.");
       } catch {
@@ -711,7 +1053,7 @@ export default function App() {
                           key={reminder.id}
                           className="tag reminderTag"
                         >
-                          Volver: {reminder.visit.businessName}
+                          Volver: {reminder.businessName}
                         </div>
                       ))}
                       {totalDayItems > 5 && <div className="more">+{totalDayItems - 5} más</div>}
@@ -742,7 +1084,7 @@ export default function App() {
           </button>
 
           <button className="secondaryBtn" onClick={() => setShowSearch(true)}>
-            🔎 Buscar visitas
+            🔎 Buscar visitas y recordatorios
           </button>
 
           <button className="secondaryBtn" onClick={exportCSV} disabled={selectedVisits.length === 0}>
@@ -780,17 +1122,32 @@ export default function App() {
             )}
 
             {selectedReminders.map(reminder => (
-              <button
+              <div
                 className="reminderCard"
                 key={reminder.id}
-                onClick={() => setOpenVisit(reminder.visit)}
               >
                 <strong>Volver a pasar</strong>
-                <span>{reminder.visit.businessName}</span>
-                <span>{reminder.visit.contactName || "Sin referente"}</span>
-                <small>Creado por visita marcada como “Muy buena” el {formatVisitDate(reminder.visit.date)}</small>
-                <em>Recordatorio</em>
-              </button>
+                <span>{reminder.businessName}</span>
+                <span>{reminder.contactName || "Sin referente"}</span>
+                <small>
+                  Previsto para {formatVisitDate(reminder.dueDate)} · Origen: {labelValue(reminder.sourceVisitValue)}
+                </small>
+                <em>{reminderStatusLabel(reminder.status)}</em>
+                <div className="reminderActions">
+                  <button type="button" onClick={() => openVisitFromReminder(reminder)}>
+                    Registrar visita
+                  </button>
+                  <button type="button" onClick={() => markReminderDone(reminder)}>
+                    Marcar pasado
+                  </button>
+                  <button type="button" onClick={() => dismissReminder(reminder)}>
+                    Descartar
+                  </button>
+                  <button type="button" onClick={() => openSourceVisitFromReminder(reminder)}>
+                    Ver origen
+                  </button>
+                </div>
+              </div>
             ))}
 
             {selectedVisits.map(v => (
@@ -874,6 +1231,101 @@ export default function App() {
         </div>
       )}
 
+      {pendingVisitSave && (
+        <div className="modal reminderScheduleModal">
+          <div className="box reminderScheduleBox">
+            <div className="modalHead">
+              <h2>Recordatorio</h2>
+              <button type="button" onClick={cancelReminderSchedule}>×</button>
+            </div>
+
+            <h3>{pendingVisitSave.visit.businessName}</h3>
+            <p className="small">
+              {labelValue(pendingVisitSave.visit.visitValue)} · Visita del {formatVisitDate(pendingVisitSave.visit.date)}
+            </p>
+
+            <div className="presetGrid">
+              {reminderPresetOptions.map(preset => {
+                const presetDate = suggestedReminderDateKey(pendingVisitSave.visit.date, preset);
+
+                return (
+                  <button
+                    type="button"
+                    key={preset.label}
+                    className={reminderSelectedDate === presetDate ? "active" : ""}
+                    onClick={() => {
+                      const parsedDate = parseKey(presetDate);
+                      setReminderSelectedDate(presetDate);
+                      setReminderMonthDate(new Date(parsedDate.getFullYear(), parsedDate.getMonth(), 1));
+                    }}
+                  >
+                    <strong>{preset.label}</strong>
+                    <span>{formatVisitDate(presetDate)}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="scheduleMonthHead">
+              <button
+                type="button"
+                onClick={() => setReminderMonthDate(new Date(reminderMonthDate.getFullYear(), reminderMonthDate.getMonth() - 1, 1))}
+              >
+                ‹
+              </button>
+              <strong>
+                {reminderMonthDate.toLocaleDateString("es-ES", {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </strong>
+              <button
+                type="button"
+                onClick={() => setReminderMonthDate(new Date(reminderMonthDate.getFullYear(), reminderMonthDate.getMonth() + 1, 1))}
+              >
+                ›
+              </button>
+            </div>
+
+            <div className="scheduleCalendar">
+              {["L", "M", "X", "J", "V", "S", "D"].map(d => (
+                <div className="scheduleWeekday" key={d}>{d}</div>
+              ))}
+
+              {reminderCalendarDays.map(day => {
+                const key = dateKey(day);
+                const isCurrentMonth = day.getMonth() === reminderMonthDate.getMonth();
+                const isSelected = key === reminderSelectedDate;
+                const isBeforeVisit = key < pendingVisitSave.visit.date;
+
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    disabled={isBeforeVisit}
+                    className={`scheduleDay ${!isCurrentMonth ? "muted" : ""} ${isSelected ? "selected" : ""}`}
+                    onClick={() => setReminderSelectedDate(key)}
+                  >
+                    {day.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="scheduleDateText">
+              Recordatorio para {formatVisitDate(reminderSelectedDate)}
+            </p>
+
+            <button type="button" className="mainBtn" onClick={confirmReminderSchedule}>
+              Guardar visita y recordatorio
+            </button>
+            <button type="button" className="secondaryBtn" onClick={cancelReminderSchedule}>
+              Volver a editar
+            </button>
+          </div>
+        </div>
+      )}
+
       {showCloseForm && (
         <div className="modal">
           <form className="box" onSubmit={closeDay}>
@@ -954,8 +1406,31 @@ export default function App() {
         <div className="modal">
           <div className="box searchBox">
             <div className="modalHead">
-              <h2>Buscar visitas</h2>
+              <h2>{searchScope === "reminders" ? "Buscar recordatorios" : "Buscar visitas"}</h2>
               <button onClick={() => setShowSearch(false)}>×</button>
+            </div>
+
+            <div className="searchTabs">
+              <button
+                type="button"
+                className={searchScope === "visits" ? "active" : ""}
+                onClick={() => {
+                  setSearchScope("visits");
+                  setSearchTerm("");
+                }}
+              >
+                Visitas
+              </button>
+              <button
+                type="button"
+                className={searchScope === "reminders" ? "active" : ""}
+                onClick={() => {
+                  setSearchScope("reminders");
+                  setSearchTerm("");
+                }}
+              >
+                Recordatorios
+              </button>
             </div>
 
             <div className="searchTabs">
@@ -981,40 +1456,78 @@ export default function App() {
               </button>
             </div>
 
+            {searchScope === "reminders" && (
+              <div className="searchTabs three">
+                <button
+                  type="button"
+                  className={reminderSearchFilter === "pending" ? "active" : ""}
+                  onClick={() => setReminderSearchFilter("pending")}
+                >
+                  Pendientes
+                </button>
+                <button
+                  type="button"
+                  className={reminderSearchFilter === "overdue" ? "active" : ""}
+                  onClick={() => setReminderSearchFilter("overdue")}
+                >
+                  Vencidos
+                </button>
+                <button
+                  type="button"
+                  className={reminderSearchFilter === "all" ? "active" : ""}
+                  onClick={() => setReminderSearchFilter("all")}
+                >
+                  Todos
+                </button>
+              </div>
+            )}
+
             <label>{searchMode === "postalCode" ? "Código postal" : "Nombre del negocio"}</label>
             <input
               autoFocus
               value={searchTerm}
               inputMode={searchMode === "postalCode" ? "numeric" : "text"}
-              placeholder={searchMode === "postalCode" ? "Ej. 28010" : "Ej. Bar Radiance"}
+              placeholder={
+                searchScope === "reminders"
+                  ? searchMode === "postalCode" ? "Opcional, ej. 04001" : "Opcional, ej. Bar Radiance"
+                  : searchMode === "postalCode" ? "Ej. 28010" : "Ej. Bar Radiance"
+              }
               onChange={e => setSearchTerm(e.target.value)}
             />
 
-            <label className="checkLine">
-              <input
-                type="checkbox"
-                checked={showBadSearchResults}
-                onChange={e => setShowBadSearchResults(e.target.checked)}
-              />
-              Mostrar también los marcados como “Malo - no volver”
-            </label>
+            {searchScope === "visits" && (
+              <label className="checkLine">
+                <input
+                  type="checkbox"
+                  checked={showBadSearchResults}
+                  onChange={e => setShowBadSearchResults(e.target.checked)}
+                />
+                Mostrar también los marcados como “Malo - no volver”
+              </label>
+            )}
 
-            {searchTerm.trim() && (
+            {searchScope === "visits" && searchTerm.trim() && (
               <p className="small">
                 {searchResults.length} {searchResults.length === 1 ? "negocio encontrado" : "negocios encontrados"}
               </p>
             )}
 
+            {searchScope === "reminders" && (
+              <p className="small">
+                {reminderSearchResults.length} {reminderSearchResults.length === 1 ? "recordatorio encontrado" : "recordatorios encontrados"}
+              </p>
+            )}
+
             <div className="searchResults">
-              {!searchTerm.trim() && (
+              {searchScope === "visits" && !searchTerm.trim() && (
                 <div className="empty">Escribe algo para empezar la búsqueda.</div>
               )}
 
-              {searchTerm.trim() && searchResults.length === 0 && (
+              {searchScope === "visits" && searchTerm.trim() && searchResults.length === 0 && (
                 <div className="empty">No he encontrado negocios con esa búsqueda.</div>
               )}
 
-              {searchResults.map(result => (
+              {searchScope === "visits" && searchResults.map(result => (
                 <button
                   type="button"
                   className="businessCard"
@@ -1035,6 +1548,48 @@ export default function App() {
                     {labelValue(result.latestVisit.visitValue)}
                   </em>
                 </button>
+              ))}
+
+              {searchScope === "reminders" && reminderSearchResults.length === 0 && (
+                <div className="empty">No hay recordatorios con ese filtro.</div>
+              )}
+
+              {searchScope === "reminders" && reminderSearchResults.map(reminder => (
+                <div
+                  className={`reminderCard searchReminderCard ${reminder.status !== REMINDER_STATUS.pending ? "mutedReminder" : ""}`}
+                  key={reminder.id}
+                >
+                  <strong>{reminder.businessName}</strong>
+                  <span>
+                    {[reminder.postalCode ? `CP ${reminder.postalCode}` : "", reminder.locality, reminder.neighborhood]
+                      .filter(Boolean)
+                      .join(" · ") || "Sin zona indicada"}
+                  </span>
+                  <span>Previsto: {formatVisitDate(reminder.dueDate)}</span>
+                  <small>Origen: {labelValue(reminder.sourceVisitValue)} el {formatVisitDate(reminder.originalVisitDate)}</small>
+                  <em>{reminderStatusLabel(reminder.status)}</em>
+                  <div className="reminderActions">
+                    {reminder.status === REMINDER_STATUS.pending && (
+                      <>
+                        <button type="button" onClick={() => openVisitFromReminder(reminder)}>
+                          Registrar visita
+                        </button>
+                        <button type="button" onClick={() => markReminderDone(reminder)}>
+                          Marcar pasado
+                        </button>
+                        <button type="button" onClick={() => dismissReminder(reminder)}>
+                          Descartar
+                        </button>
+                      </>
+                    )}
+                    <button type="button" onClick={() => openSourceVisitFromReminder(reminder)}>
+                      Ver origen
+                    </button>
+                    <button type="button" className="dangerMiniBtn" onClick={() => deleteReminder(reminder)}>
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           </div>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "visitas-pro-app-v2";
+const CACHE_NAME = "visitas-pro-app-v3";
 const APP_SHELL = [
   "/",
   "/manifest.json",

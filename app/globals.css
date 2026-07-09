@@ -260,6 +260,8 @@ button {
   background: #111827;
   color: #f8fafc;
   margin-bottom: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
 }
 
 .reminderCard {
@@ -297,6 +299,35 @@ button {
   background: #a855f7;
 }
 
+.searchReminderCard {
+  margin-bottom: 0;
+}
+
+.mutedReminder {
+  opacity: 0.72;
+}
+
+.reminderActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.reminderActions button {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.dangerMiniBtn {
+  background: #7f1d1d;
+  border-color: #ef4444;
+}
+
 .searchBox {
   max-width: 680px;
 }
@@ -306,6 +337,10 @@ button {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin: 12px 0 8px;
+}
+
+.searchTabs.three {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .searchTabs button {
@@ -318,6 +353,105 @@ button {
   color: #111827;
   border-color: #f97316;
   font-weight: bold;
+}
+
+.reminderScheduleModal {
+  z-index: 70;
+}
+
+.reminderScheduleBox {
+  max-width: 640px;
+}
+
+.presetGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.presetGrid button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: #111827;
+  border-color: #374151;
+}
+
+.presetGrid button.active {
+  background: #fff7ed;
+  color: #111827;
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.24);
+}
+
+.presetGrid span {
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.presetGrid button.active span {
+  color: #7c2d12;
+}
+
+.scheduleMonthHead {
+  display: grid;
+  grid-template-columns: 46px 1fr 46px;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 10px;
+}
+
+.scheduleMonthHead strong {
+  text-align: center;
+  text-transform: capitalize;
+  color: #f97316;
+  font-size: 18px;
+}
+
+.scheduleCalendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.scheduleWeekday {
+  color: #fb923c;
+  text-align: center;
+  font-weight: bold;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.scheduleDay {
+  min-height: 44px;
+  padding: 8px 4px;
+  background: #111827;
+  border-color: #374151;
+}
+
+.scheduleDay.muted {
+  opacity: 0.42;
+}
+
+.scheduleDay.selected {
+  background: #f97316;
+  color: #111827;
+  border-color: #f97316;
+  font-weight: bold;
+}
+
+.scheduleDay:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.scheduleDateText {
+  margin: 14px 0;
+  color: #f8fafc;
+  font-weight: bold;
+  text-align: center;
 }
 
 .searchResults,
@@ -659,6 +793,42 @@ textarea {
   .businessCard em,
   .historyCard em {
     font-size: 16px;
+  }
+
+  .reminderActions button {
+    font-size: 15px;
+    padding: 9px 11px;
+  }
+
+  .presetGrid {
+    gap: 8px;
+  }
+
+  .presetGrid button {
+    min-height: 62px;
+    padding: 10px 8px;
+    font-size: 16px;
+  }
+
+  .presetGrid span {
+    font-size: 13px;
+  }
+
+  .scheduleMonthHead {
+    grid-template-columns: 54px 1fr 54px;
+  }
+
+  .scheduleMonthHead strong {
+    font-size: 20px;
+  }
+
+  .scheduleDay {
+    min-height: 48px;
+    font-size: 17px;
+  }
+
+  .scheduleDateText {
+    font-size: 19px;
   }
 
   .modalHead h2 {
