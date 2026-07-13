@@ -659,7 +659,7 @@ textarea {
 /* MOBILE / TOUCH */
 @media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .app {
-    padding: 8px;
+    padding: 10px;
   }
 
   .topbar {
@@ -681,12 +681,12 @@ textarea {
   }
 
   h1 {
-    font-size: 32px;
+    font-size: 34px;
     line-height: 1.05;
   }
 
   .small {
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.25;
   }
 
@@ -696,10 +696,10 @@ textarea {
   }
 
   .buttons button {
-    font-size: 17px;
-    min-height: 46px;
-    min-width: 58px;
-    padding: 10px 14px;
+    font-size: 19px;
+    min-height: 50px;
+    min-width: 64px;
+    padding: 11px 16px;
   }
 
   .layout {
@@ -723,31 +723,38 @@ textarea {
   .calendar {
     width: 100%;
     max-width: 100%;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    overflow-x: hidden;
-    gap: 6px;
-    padding: 10px;
+    grid-template-columns: repeat(7, minmax(92px, 1fr));
+    overflow-x: auto;
+    gap: 8px;
+    padding: 12px;
     margin-bottom: 14px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .calendar::-webkit-scrollbar {
+    display: none;
   }
 
   .weekday {
-    font-size: 16px;
-    padding: 7px 4px;
+    font-size: 18px;
+    padding: 8px 4px;
   }
 
   .day {
-    min-height: clamp(72px, 22vw, 104px);
-    padding: 4px;
-    font-size: 16px;
+    min-height: 112px;
+    padding: 7px;
+    font-size: 18px;
   }
 
   .dayHead span {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .dayHead b {
-    font-size: 13px;
-    padding: 2px 7px;
+    font-size: 15px;
+    padding: 3px 8px;
   }
 
   .side {
@@ -757,24 +764,24 @@ textarea {
   }
 
   .side h2 {
-    font-size: 28px;
+    font-size: 30px;
   }
 
   .mainBtn,
   .orangeBtn,
   .secondaryBtn {
-    min-height: 52px;
-    font-size: 19px;
-    padding: 13px;
+    min-height: 58px;
+    font-size: 21px;
+    padding: 15px;
   }
 
   .tag {
-    font-size: 11px;
-    padding: 2px 5px;
+    font-size: 13px;
+    padding: 3px 6px;
   }
 
   .closedTag {
-    font-size: 11px;
+    font-size: 13px;
   }
 
   .visitCard,
