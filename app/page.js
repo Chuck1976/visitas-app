@@ -417,7 +417,45 @@ export default function App() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+    let refreshing = false;
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    if ("caches" in window) {
+      caches
+        .keys()
+        .then(keys =>
+          Promise.all(
+            keys
+              .filter(key => key.startsWith("visitas-pro-app-"))
+              .map(key => caches.delete(key))
+          )
+        )
+        .catch(() => undefined);
+    }
+
+    navigator.serviceWorker.register("/sw.js").then(registration => {
+      registration.update().catch(() => undefined);
+
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      }
+
+      registration.addEventListener("updatefound", () => {
+        const worker = registration.installing;
+        if (!worker) return;
+
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            worker.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      });
+    }).catch(() => {
       // La app sigue funcionando aunque el móvil no permita instalarla como PWA.
     });
   }, []);

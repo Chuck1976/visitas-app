@@ -1,6 +1,5 @@
-const CACHE_NAME = "visitas-pro-app-v3";
+const CACHE_NAME = "visitas-pro-app-v5";
 const APP_SHELL = [
-  "/",
   "/manifest.json",
   "/visitas-pro-icon-192.png",
   "/visitas-pro-icon-512.png",
@@ -33,12 +32,22 @@ self.addEventListener("activate", event => {
   );
 });
 
+self.addEventListener("message", event => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
+  if (event.request.mode === "navigate") {
+    event.respondWith(fetch(event.request));
+    return;
+  }
 
   event.respondWith(
     fetch(event.request).catch(() =>
-      caches.match(event.request).then(response => response || caches.match("/"))
+      caches.match(event.request)
     )
   );
 });
