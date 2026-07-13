@@ -4,16 +4,23 @@
 
 html,
 body {
+  width: 100%;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   background: #111827;
   color: #f8fafc;
   font-family: Arial, Helvetica, sans-serif;
   -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
 }
 
 .app {
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background: #111827;
   padding: 20px;
   color: #f8fafc;
@@ -63,6 +70,7 @@ h1 {
 
 button {
   cursor: pointer;
+  touch-action: manipulation;
   border-radius: 12px;
   padding: 10px 14px;
   background: #374151;
@@ -553,12 +561,13 @@ label {
 input,
 select,
 textarea {
+  min-width: 0;
   width: 100%;
   margin-top: 5px;
   padding: 12px;
   border-radius: 12px;
   border: 2px solid #f59e0b;
-  font-size: 15px;
+  font-size: 16px;
   background: #f8fafc;
   color: #111827;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
@@ -712,12 +721,13 @@ textarea {
   }
 
   .calendar {
-    grid-template-columns: repeat(7, minmax(88px, 1fr));
-    overflow-x: auto;
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    overflow-x: hidden;
     gap: 6px;
     padding: 10px;
     margin-bottom: 14px;
-    -webkit-overflow-scrolling: touch;
   }
 
   .weekday {
@@ -726,8 +736,8 @@ textarea {
   }
 
   .day {
-    min-height: 104px;
-    padding: 5px;
+    min-height: clamp(72px, 22vw, 104px);
+    padding: 4px;
     font-size: 16px;
   }
 
