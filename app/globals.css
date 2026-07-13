@@ -723,38 +723,31 @@ textarea {
   .calendar {
     width: 100%;
     max-width: 100%;
-    grid-template-columns: repeat(7, minmax(92px, 1fr));
-    overflow-x: auto;
-    gap: 8px;
-    padding: 12px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    overflow-x: hidden;
+    gap: 5px;
+    padding: 8px;
     margin-bottom: 14px;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-
-  .calendar::-webkit-scrollbar {
-    display: none;
   }
 
   .weekday {
-    font-size: 18px;
-    padding: 8px 4px;
+    font-size: 17px;
+    padding: 7px 2px;
   }
 
   .day {
-    min-height: 112px;
-    padding: 7px;
-    font-size: 18px;
-  }
-
-  .dayHead span {
+    min-height: clamp(82px, 23vw, 108px);
+    padding: 5px 4px;
     font-size: 17px;
   }
 
+  .dayHead span {
+    font-size: 16px;
+  }
+
   .dayHead b {
-    font-size: 15px;
-    padding: 3px 8px;
+    font-size: 13px;
+    padding: 3px 6px;
   }
 
   .side {
@@ -776,12 +769,12 @@ textarea {
   }
 
   .tag {
-    font-size: 13px;
-    padding: 3px 6px;
+    font-size: 11px;
+    padding: 2px 4px;
   }
 
   .closedTag {
-    font-size: 13px;
+    font-size: 11px;
   }
 
   .visitCard,
