@@ -359,6 +359,8 @@ export default function App() {
   const today = new Date();
   const todayKey = dateKey(today);
   const importInputRef = useRef(null);
+  const calendarRef = useRef(null);
+  const summaryRef = useRef(null);
 
   const [visits, setVisits] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
@@ -391,6 +393,91 @@ export default function App() {
     type: "Día completo",
     reason: "",
   });
+
+  const activeModalKey = pendingVisitSave
+    ? "reminder-schedule"
+    : openClosedDay
+      ? "closed-day"
+      : openBusiness
+        ? "business"
+        : showSearch
+          ? "search"
+          : openVisit
+            ? "visit-details"
+            : showCloseForm
+              ? "close-day"
+              : showForm
+                ? "visit-form"
+                : "";
+  const hasOpenModal = Boolean(activeModalKey);
+
+  useEffect(() => {
+    if (!hasOpenModal) return;
+
+    const root = document.documentElement;
+    const body = document.body;
+    const scrollY = window.scrollY;
+    const previousBodyStyles = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+    };
+
+    function syncVisibleViewport() {
+      const viewport = window.visualViewport;
+      const width = viewport?.width || window.innerWidth;
+      const height = viewport?.height || window.innerHeight;
+      const offsetTop = viewport?.offsetTop || 0;
+      const offsetLeft = viewport?.offsetLeft || 0;
+
+      root.style.setProperty("--visible-viewport-width", `${width}px`);
+      root.style.setProperty("--visible-viewport-height", `${height}px`);
+      root.style.setProperty("--visible-viewport-top", `${offsetTop}px`);
+      root.style.setProperty("--visible-viewport-left", `${offsetLeft}px`);
+    }
+
+    syncVisibleViewport();
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+
+    window.addEventListener("resize", syncVisibleViewport);
+    window.visualViewport?.addEventListener("resize", syncVisibleViewport);
+    window.visualViewport?.addEventListener("scroll", syncVisibleViewport);
+
+    return () => {
+      window.removeEventListener("resize", syncVisibleViewport);
+      window.visualViewport?.removeEventListener("resize", syncVisibleViewport);
+      window.visualViewport?.removeEventListener("scroll", syncVisibleViewport);
+
+      Object.entries(previousBodyStyles).forEach(([property, value]) => {
+        body.style[property] = value;
+      });
+
+      root.style.removeProperty("--visible-viewport-width");
+      root.style.removeProperty("--visible-viewport-height");
+      root.style.removeProperty("--visible-viewport-top");
+      root.style.removeProperty("--visible-viewport-left");
+      window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
+    };
+  }, [hasOpenModal]);
+
+  useEffect(() => {
+    if (!activeModalKey) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const modals = document.querySelectorAll(".modal");
+      const activeModal = modals[modals.length - 1];
+      const activeBox = activeModal?.querySelector(".box");
+
+      if (activeModal) activeModal.scrollTop = 0;
+      if (activeBox) activeBox.scrollTop = 0;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeModalKey]);
 
   useEffect(() => {
     function refreshData() {
@@ -634,6 +721,26 @@ export default function App() {
     setForm({ ...EMPTY_VISIT_FORM });
     setLocationStatus("");
     setShowForm(true);
+  }
+
+  function selectCalendarDay(key) {
+    setSelectedDate(key);
+
+    if (!window.matchMedia("(max-width: 850px)").matches) return;
+
+    window.requestAnimationFrame(() => {
+      summaryRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
+
+  function scrollToCalendar() {
+    calendarRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
   function openVisitFromReminder(reminder) {
@@ -1039,7 +1146,7 @@ export default function App() {
       </div>
 
       <div className="layout">
-        <div className="calendar">
+        <div className="calendar" ref={calendarRef}>
           {["L", "M", "X", "J", "V", "S", "D"].map(d => (
             <div className="weekday" key={d}>{d}</div>
           ))}
@@ -1057,7 +1164,7 @@ export default function App() {
               <button
                 key={key}
                 className={`day ${!isCurrentMonth ? "muted" : ""} ${isSelected ? "selected" : ""} ${closed ? "closed" : ""}`}
-                onClick={() => setSelectedDate(key)}
+                onClick={() => selectCalendarDay(key)}
               >
                 {(() => {
                   const dayReminders = remindersByDay[key] || [];
@@ -1104,7 +1211,11 @@ export default function App() {
           })}
         </div>
 
-        <div className="side">
+        <div className="side" ref={summaryRef}>
+          <button type="button" className="backToCalendarBtn" onClick={scrollToCalendar}>
+            ↑ Volver al calendario
+          </button>
+
           <h2>
             {parseKey(selectedDate).toLocaleDateString("es-ES", {
               weekday: "long",
