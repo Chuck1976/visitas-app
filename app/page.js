@@ -59,6 +59,7 @@ const EMPTY_VISIT_FORM = {
 };
 
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MOBILE_LAYOUT_QUERY = "(max-width: 850px), (max-device-width: 850px), (hover: none) and (pointer: coarse) and (max-width: 1200px)";
 
 function pad(n) {
   return String(n).padStart(2, "0");
@@ -726,7 +727,7 @@ export default function App() {
   function selectCalendarDay(key) {
     setSelectedDate(key);
 
-    if (!window.matchMedia("(max-width: 850px)").matches) return;
+    if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
 
     window.requestAnimationFrame(() => {
       summaryRef.current?.scrollIntoView({

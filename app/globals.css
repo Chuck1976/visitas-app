@@ -15,6 +15,11 @@ body {
   overflow-x: hidden;
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
 .app {
   min-height: 100vh;
   min-height: 100dvh;
@@ -83,9 +88,12 @@ button {
   display: grid;
   grid-template-columns: 1.6fr 0.8fr;
   gap: 18px;
+  align-items: start;
 }
 
 .calendar {
+  align-self: start;
+  align-content: start;
   background: #1f2937;
   border-radius: 18px;
   padding: 12px;
@@ -103,7 +111,9 @@ button {
 }
 
 .day {
+  height: 105px;
   min-height: 105px;
+  max-height: 105px;
   width: 100%;
   min-width: 0;
   text-align: left;
@@ -209,6 +219,8 @@ button {
 }
 
 .side {
+  align-self: start;
+  min-width: 0;
   background: #1f2937;
   border-radius: 18px;
   padding: 18px;
@@ -679,7 +691,7 @@ textarea {
 }
 
 /* MOBILE */
-@media (max-width: 850px) {
+@media (max-width: 850px), (max-device-width: 850px), (hover: none) and (pointer: coarse) and (max-width: 1200px) {
   .app {
     padding: 8px;
   }
@@ -761,7 +773,9 @@ textarea {
   }
 
   .day {
+    height: clamp(68px, 18vw, 92px);
     min-height: clamp(68px, 18vw, 92px);
+    max-height: clamp(68px, 18vw, 92px);
     padding: 4px 3px;
     font-size: 14px;
   }
