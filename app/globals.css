@@ -91,6 +91,11 @@ button {
   align-items: start;
 }
 
+.calendarViewport {
+  min-width: 0;
+  align-self: start;
+}
+
 .calendar {
   align-self: start;
   align-content: start;
@@ -693,14 +698,14 @@ textarea {
 /* MOBILE */
 @media (max-width: 850px), (max-device-width: 850px), (hover: none) and (pointer: coarse) and (max-width: 1200px) {
   .app {
-    padding: 8px;
+    padding: clamp(8px, 1.5vw, 14px);
   }
 
   .topbar {
     flex-direction: column;
-    gap: 12px;
+    gap: clamp(16px, 2.5vw, 28px);
     align-items: stretch;
-    padding: 14px;
+    padding: clamp(16px, 2.5vw, 24px);
     border-radius: 14px;
   }
 
@@ -710,17 +715,17 @@ textarea {
   }
 
   .brandLogo {
-    width: 104px;
-    max-width: 32vw;
+    width: clamp(94px, 15vw, 150px);
+    max-width: none;
   }
 
   h1 {
-    font-size: 28px;
+    font-size: clamp(27px, 4.5vw, 44px);
     line-height: 1.05;
   }
 
   .small {
-    font-size: 14px;
+    font-size: clamp(14px, 2vw, 20px);
     line-height: 1.25;
   }
 
@@ -730,10 +735,10 @@ textarea {
   }
 
   .buttons button {
-    font-size: 16px;
-    min-height: 44px;
-    min-width: 56px;
-    padding: 10px 14px;
+    font-size: clamp(18px, 2.4vw, 24px);
+    min-height: clamp(48px, 7vw, 68px);
+    min-width: clamp(62px, 9vw, 86px);
+    padding: 10px clamp(16px, 2.4vw, 24px);
   }
 
   .layout {
@@ -757,46 +762,65 @@ textarea {
     border-radius: 14px;
   }
 
-  .calendar {
+  .calendarViewport {
     width: 100%;
     max-width: 100%;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    overflow-x: hidden;
-    gap: 4px;
-    padding: 7px;
+    overflow-x: auto;
+    overflow-y: hidden;
     margin-bottom: 14px;
+    border-radius: 14px;
+    overscroll-behavior-x: contain;
+    scroll-behavior: smooth;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .calendarViewport::-webkit-scrollbar {
+    display: none;
+  }
+
+  .calendar {
+    width: max-content;
+    max-width: none;
+    grid-template-columns: repeat(7, clamp(88px, 24vw, 220px));
+    overflow: visible;
+    gap: clamp(5px, 0.8vw, 8px);
+    padding: clamp(8px, 1.5vw, 14px);
+    margin-bottom: 0;
   }
 
   .weekday {
-    font-size: 14px;
+    font-size: clamp(16px, 2.2vw, 22px);
     padding: 6px 2px;
   }
 
   .day {
-    height: clamp(68px, 18vw, 92px);
-    min-height: clamp(68px, 18vw, 92px);
-    max-height: clamp(68px, 18vw, 92px);
-    padding: 4px 3px;
-    font-size: 14px;
+    height: clamp(96px, 16vw, 150px);
+    min-height: clamp(96px, 16vw, 150px);
+    max-height: clamp(96px, 16vw, 150px);
+    padding: clamp(5px, 0.8vw, 8px);
+    font-size: clamp(16px, 2.1vw, 21px);
+    scroll-snap-align: center;
   }
 
   .dayHead span {
-    font-size: 14px;
+    font-size: clamp(16px, 2.1vw, 21px);
   }
 
   .dayHead b {
-    font-size: 11px;
-    padding: 2px 5px;
+    font-size: clamp(12px, 1.7vw, 17px);
+    padding: 2px clamp(5px, 0.8vw, 8px);
   }
 
   .side {
-    padding: 14px;
+    padding: clamp(14px, 2.2vw, 22px);
     margin-top: 14px;
     border-radius: 14px;
   }
 
   .side h2 {
-    font-size: 24px;
+    font-size: clamp(26px, 3.6vw, 36px);
   }
 
   .backToCalendarBtn {
@@ -805,24 +829,28 @@ textarea {
     min-height: 42px;
     margin-bottom: 8px;
     padding: 9px 12px;
-    font-size: 15px;
+    font-size: clamp(16px, 2.2vw, 20px);
   }
 
   .mainBtn,
   .orangeBtn,
   .secondaryBtn {
-    min-height: 46px;
-    font-size: 17px;
-    padding: 11px;
+    min-height: clamp(48px, 7vw, 66px);
+    font-size: clamp(17px, 2.4vw, 22px);
+    padding: clamp(11px, 1.8vw, 17px);
   }
 
   .tag {
-    font-size: 11px;
-    padding: 2px 4px;
+    font-size: clamp(12px, 1.65vw, 16px);
+    padding: 2px clamp(4px, 0.7vw, 7px);
   }
 
   .closedTag {
-    font-size: 11px;
+    font-size: clamp(12px, 1.65vw, 16px);
+  }
+
+  .more {
+    font-size: clamp(12px, 1.55vw, 15px);
   }
 
   .visitCard,
@@ -830,8 +858,8 @@ textarea {
   .reminderCard,
   .businessCard,
   .historyCard {
-    padding: 11px;
-    font-size: 16px;
+    padding: clamp(11px, 1.8vw, 17px);
+    font-size: clamp(16px, 2.1vw, 20px);
     border-radius: 12px;
   }
 
@@ -843,19 +871,19 @@ textarea {
   .historyCard small,
   .visitCard small,
   .reminderCard small {
-    font-size: 15px;
+    font-size: clamp(15px, 1.9vw, 18px);
   }
 
   .visitCard em,
   .reminderCard em,
   .businessCard em,
   .historyCard em {
-    font-size: 13px;
+    font-size: clamp(13px, 1.7vw, 16px);
   }
 
   .reminderActions button {
-    font-size: 14px;
-    padding: 8px 10px;
+    font-size: clamp(14px, 1.8vw, 18px);
+    padding: 8px clamp(10px, 1.5vw, 15px);
   }
 
   .presetGrid {
@@ -890,7 +918,7 @@ textarea {
   }
 
   .modalHead h2 {
-    font-size: 24px;
+    font-size: clamp(24px, 3.2vw, 30px);
   }
 
   .modalHead button {
@@ -900,7 +928,7 @@ textarea {
   }
 
   label {
-    font-size: 16px;
+    font-size: clamp(16px, 2vw, 20px);
     margin-top: 12px;
   }
 
@@ -908,8 +936,8 @@ textarea {
   select,
   textarea {
     min-height: 48px;
-    font-size: 16px;
-    padding: 12px;
+    font-size: clamp(16px, 2vw, 20px);
+    padding: clamp(12px, 1.8vw, 17px);
   }
 
   select {

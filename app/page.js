@@ -548,6 +548,26 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const viewport = calendarRef.current;
+      const selectedDay = viewport?.querySelector(`[data-date-key="${selectedDate}"]`);
+      if (!viewport || !selectedDay) return;
+
+      const centeredLeft = selectedDay.offsetLeft
+        - (viewport.clientWidth - selectedDay.offsetWidth) / 2;
+
+      viewport.scrollTo({
+        left: Math.max(0, centeredLeft),
+        behavior: "smooth",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedDate, monthDate]);
+
   const days = useMemo(() => makeCalendarDays(monthDate), [monthDate]);
   const reminderCalendarDays = useMemo(() => makeCalendarDays(reminderMonthDate), [reminderMonthDate]);
   const reminderPresetOptions = pendingVisitSave
@@ -1147,7 +1167,8 @@ export default function App() {
       </div>
 
       <div className="layout">
-        <div className="calendar" ref={calendarRef}>
+        <div className="calendarViewport" ref={calendarRef}>
+          <div className="calendar">
           {["L", "M", "X", "J", "V", "S", "D"].map(d => (
             <div className="weekday" key={d}>{d}</div>
           ))}
@@ -1164,6 +1185,7 @@ export default function App() {
             return (
               <button
                 key={key}
+                data-date-key={key}
                 className={`day ${!isCurrentMonth ? "muted" : ""} ${isSelected ? "selected" : ""} ${closed ? "closed" : ""}`}
                 onClick={() => selectCalendarDay(key)}
               >
@@ -1210,6 +1232,7 @@ export default function App() {
               </button>
             );
           })}
+          </div>
         </div>
 
         <div className="side" ref={summaryRef}>
