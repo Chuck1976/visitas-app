@@ -944,3 +944,250 @@ textarea {
     padding-right: 46px;
   }
 }
+
+.targetListsBox {
+  max-width: 900px;
+}
+
+.targetListCreate {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+
+.targetListCreate input {
+  margin: 0;
+}
+
+.targetListCreate .mainBtn {
+  width: auto;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.targetListMessage {
+  margin: 8px 0 14px;
+  color: #fbbf24;
+}
+
+.targetListCards,
+.targetLeadList,
+.leadMatchList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.targetListCard {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  text-align: left;
+  background: #111827;
+  border-color: #374151;
+}
+
+.targetListCard span,
+.targetListCard small,
+.targetLeadCard p,
+.targetLeadHead span {
+  color: #cbd5e1;
+}
+
+.targetListCard small {
+  color: #fb923c;
+}
+
+.backToListsBtn {
+  width: auto;
+  margin: 0 0 14px;
+}
+
+.targetListTools,
+.leadActions,
+.mapActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.targetListTools {
+  margin: 8px 0 12px;
+}
+
+.targetListTools .mainBtn,
+.leadActions .mainBtn {
+  width: auto;
+  margin: 0;
+}
+
+.compactDeleteBtn {
+  width: auto;
+  margin: 0;
+}
+
+.leadSearchInput {
+  margin-top: 12px;
+}
+
+.leadFilters {
+  margin-bottom: 14px;
+}
+
+.targetLeadCard {
+  border: 1px solid #374151;
+  border-radius: 14px;
+  background: #111827;
+  padding: 14px;
+}
+
+.targetLeadCard.visited {
+  border-color: #22c55e;
+}
+
+.targetLeadCard.discarded {
+  opacity: 0.68;
+  border-color: #64748b;
+}
+
+.targetLeadHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.targetLeadHead h3 {
+  margin: 0 0 4px;
+}
+
+.targetLeadCard p {
+  margin: 8px 0;
+}
+
+.leadStatus {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #111827;
+  background: #fbbf24;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: bold;
+}
+
+.leadStatus.visited {
+  background: #22c55e;
+}
+
+.leadStatus.discarded {
+  background: #94a3b8;
+}
+
+.mapActions {
+  margin: 10px 0;
+}
+
+.mapActions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #4b5563;
+  border-radius: 10px;
+  background: #374151;
+  color: #f8fafc;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.leadActions button {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.leadMatchBox {
+  max-width: 660px;
+}
+
+.leadMatchItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #374151;
+  border-radius: 12px;
+  background: #111827;
+}
+
+.leadMatchItem input {
+  width: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin: 1px 0 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  accent-color: #f97316;
+}
+
+.leadMatchItem span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.leadMatchItem small {
+  color: #cbd5e1;
+  font-weight: normal;
+}
+
+@media (max-width: 850px), (max-device-width: 850px), (hover: none) and (pointer: coarse) and (max-width: 1200px) {
+  .targetListCreate {
+    grid-template-columns: 1fr;
+  }
+
+  .targetListCreate .mainBtn,
+  .targetListTools .mainBtn,
+  .compactDeleteBtn,
+  .backToListsBtn {
+    width: 100%;
+  }
+
+  .targetListTools {
+    flex-direction: column;
+  }
+
+  .targetListCard,
+  .targetLeadCard {
+    font-size: clamp(16px, 2vw, 20px);
+  }
+
+  .leadStatus {
+    font-size: clamp(13px, 1.7vw, 16px);
+  }
+
+  .mapActions a,
+  .leadActions button {
+    min-height: 42px;
+    font-size: clamp(14px, 1.8vw, 18px);
+  }
+
+  .leadActions button,
+  .leadActions .mainBtn {
+    width: 100%;
+  }
+
+  .leadMatchItem {
+    font-size: clamp(16px, 2vw, 20px);
+  }
+}

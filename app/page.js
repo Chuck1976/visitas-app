@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { readSheet } from "read-excel-file/browser";
 
 const STORAGE_KEY = "visitas_app_pro_v4";
 const OLD_KEYS = ["visitas_app_pro_v3", "visitas_app_pro_v2"];
@@ -43,16 +44,28 @@ const REMINDER_STATUS = {
   dismissed: "dismissed",
 };
 
+const LEAD_STATUS = {
+  pending: "pending",
+  visited: "visited",
+  discarded: "discarded",
+};
+
 const EMPTY_VISIT_FORM = {
   businessName: "",
+  category: "",
   contactName: "",
+  phone: "",
   locality: "",
   neighborhood: "",
   postalCode: "",
   address: "",
+  googleMaps: "",
   visitType: tiposVisita[0],
   notes: "",
   visitValue: "normal",
+  sourceLeadId: "",
+  sourceListId: "",
+  linkedLeadIds: [],
   latitude: "",
   longitude: "",
   locationAccuracy: "",
@@ -204,6 +217,7 @@ function normalizeData(data) {
     visits,
     closedDays: Array.isArray(data?.closedDays) ? data.closedDays : [],
     reminders: Array.isArray(data?.reminders) ? data.reminders : [],
+    targetLists: Array.isArray(data?.targetLists) ? data.targetLists : [],
   };
 }
 
@@ -241,7 +255,21 @@ function validateImportedData(data) {
     [REMINDER_STATUS.pending, REMINDER_STATUS.done, REMINDER_STATUS.dismissed].includes(reminder.status)
   );
 
-  if (!visitsAreValid || !closedDaysAreValid || !remindersAreValid) {
+  const hasImportedTargetLists = Object.prototype.hasOwnProperty.call(data, "targetLists");
+  const targetLists = hasImportedTargetLists ? data.targetLists : [];
+  const targetListsAreValid = Array.isArray(targetLists) && targetLists.every(list =>
+    list &&
+    (typeof list.id === "string" || typeof list.id === "number") &&
+    typeof list.name === "string" &&
+    Array.isArray(list.leads) &&
+    list.leads.every(lead =>
+      lead &&
+      (typeof lead.id === "string" || typeof lead.id === "number") &&
+      typeof lead.businessName === "string"
+    )
+  );
+
+  if (!visitsAreValid || !closedDaysAreValid || !remindersAreValid || !targetListsAreValid) {
     throw new Error("El backup contiene registros no válidos");
   }
 
@@ -249,6 +277,7 @@ function validateImportedData(data) {
     visits: data.visits,
     closedDays: data.closedDays,
     ...(hasImportedReminders ? { reminders } : {}),
+    ...(hasImportedTargetLists ? { targetLists } : {}),
   });
 }
 
@@ -332,6 +361,162 @@ function reminderMatchesSearch(reminder, term, mode) {
   return businessName.length > 0 && businessName.includes(term);
 }
 
+function leadStatusLabel(status) {
+  if (status === LEAD_STATUS.visited) return "Visitado";
+  if (status === LEAD_STATUS.discarded) return "Descartado";
+  return "Pendiente";
+}
+
+function normalizePhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("34")) return digits.slice(2);
+  return digits;
+}
+
+function uniqueIds(ids) {
+  return [...new Set((ids || []).filter(Boolean).map(String))];
+}
+
+function extractPostalCode(...values) {
+  const text = values.filter(Boolean).join(" ");
+  return text.match(/\b(?:0[1-9]|[1-4]\d|5[0-2])\d{3}\b/)?.[0] || "";
+}
+
+function extractPhone(...values) {
+  const text = values.filter(Boolean).join(" ");
+  const match = text.match(/(?:\+34\s*)?(?:[6789]\s*\d){8}\b/);
+  return match ? match[0].replace(/\s/g, "") : "";
+}
+
+function importColumnValue(row, acceptedHeaders) {
+  const wanted = acceptedHeaders.map(normalizeSearchText);
+  const entry = Object.entries(row || {}).find(([header]) =>
+    wanted.includes(normalizeSearchText(header))
+  );
+  return entry ? String(entry[1] ?? "").trim() : "";
+}
+
+function importedLeadFromRow(row, id) {
+  const businessName = importColumnValue(row, [
+    "Negocio",
+    "Nombre negocio",
+    "Nombre del negocio",
+    "Establecimiento",
+    "Empresa",
+  ]);
+  const category = importColumnValue(row, ["Categoría", "Categoria", "Segmento", "Tipo", "Sector"]);
+  const address = importColumnValue(row, ["Dirección", "Direccion", "Dirección aproximada", "Calle", "Domicilio"]);
+  const locality = importColumnValue(row, ["Localidad", "Municipio", "Población", "Poblacion", "Ciudad"]);
+  const postalCode = importColumnValue(row, ["Código postal", "Codigo postal", "CP", "Postal"]);
+  const phone = importColumnValue(row, ["Teléfono", "Telefono", "Móvil", "Movil", "Tel", "Phone"]);
+  const googleMaps = importColumnValue(row, [
+    "Google Maps",
+    "Enlace Google Maps",
+    "Google Maps URL",
+    "Maps",
+    "Enlace Maps",
+    "Mapa",
+  ]);
+
+  return {
+    id,
+    businessName,
+    category,
+    address,
+    locality,
+    postalCode: postalCode || extractPostalCode(address, locality),
+    phone: phone || extractPhone(address, locality),
+    googleMaps,
+    status: LEAD_STATUS.pending,
+    visitIds: [],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function rowsFromMatrix(matrix) {
+  const [headerRow, ...dataRows] = matrix || [];
+  if (!Array.isArray(headerRow) || headerRow.length === 0) return [];
+
+  const headers = headerRow.map(header => String(header ?? "").trim());
+  return dataRows
+    .filter(row => Array.isArray(row) && row.some(value => String(value ?? "").trim()))
+    .map(row => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
+}
+
+function csvRows(text) {
+  const source = String(text || "").replace(/^\uFEFF/, "");
+  const firstLine = source.split(/\r?\n/, 1)[0] || "";
+  const delimiter = firstLine.includes("\t")
+    ? "\t"
+    : firstLine.split(";").length > firstLine.split(",").length
+      ? ";"
+      : ",";
+  const rows = [];
+  let row = [];
+  let value = "";
+  let quoted = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"') {
+      if (quoted && source[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (!quoted && character === delimiter) {
+      row.push(value.trim());
+      value = "";
+      continue;
+    }
+    if (!quoted && (character === "\n" || character === "\r")) {
+      if (character === "\r" && source[index + 1] === "\n") index += 1;
+      row.push(value.trim());
+      if (row.some(cell => cell)) rows.push(row);
+      row = [];
+      value = "";
+      continue;
+    }
+    value += character;
+  }
+
+  row.push(value.trim());
+  if (row.some(cell => cell)) rows.push(row);
+  return rows;
+}
+
+function leadKey(lead) {
+  const name = normalizeSearchText(lead.businessName);
+  const phone = normalizePhone(lead.phone);
+  const address = normalizeSearchText(lead.address);
+  const locality = normalizeSearchText(lead.locality);
+  const postalCode = normalizeSearchText(lead.postalCode);
+  const googleMaps = String(lead.googleMaps || "").trim();
+  return [name, phone, address, postalCode, locality, googleMaps]
+    .filter(Boolean)
+    .join("|");
+}
+
+function mapSearchUrl(record) {
+  const savedUrl = String(record?.googleMaps || "").trim();
+  if (/^https?:\/\//i.test(savedUrl)) return savedUrl;
+
+  const query = [record?.businessName, record?.address, record?.postalCode, record?.locality]
+    .filter(Boolean)
+    .join(", ");
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "";
+}
+
+function mapDirectionsUrl(record) {
+  const query = [record?.businessName, record?.address, record?.postalCode, record?.locality]
+    .filter(Boolean)
+    .join(", ");
+  return query ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}` : mapSearchUrl(record);
+}
+
 function makeCalendarDays(monthDate) {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -360,12 +545,14 @@ export default function App() {
   const today = new Date();
   const todayKey = dateKey(today);
   const importInputRef = useRef(null);
+  const leadImportInputRef = useRef(null);
   const calendarRef = useRef(null);
   const summaryRef = useRef(null);
 
   const [visits, setVisits] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
   const [reminders, setReminders] = useState([]);
+  const [targetLists, setTargetLists] = useState([]);
   const [monthDate, setMonthDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(todayKey);
 
@@ -379,6 +566,14 @@ export default function App() {
   const [openClosedDay, setOpenClosedDay] = useState(null);
   const [locationStatus, setLocationStatus] = useState("");
   const [backupStatus, setBackupStatus] = useState("");
+  const [showTargetLists, setShowTargetLists] = useState(false);
+  const [openTargetListId, setOpenTargetListId] = useState(null);
+  const [newTargetListName, setNewTargetListName] = useState("");
+  const [leadImportMessage, setLeadImportMessage] = useState("");
+  const [leadSearchTerm, setLeadSearchTerm] = useState("");
+  const [leadStatusFilter, setLeadStatusFilter] = useState("all");
+  const [pendingLeadMatch, setPendingLeadMatch] = useState(null);
+  const [openLeadVisits, setOpenLeadVisits] = useState(null);
 
   const [form, setForm] = useState({ ...EMPTY_VISIT_FORM });
   const [pendingVisitSave, setPendingVisitSave] = useState(null);
@@ -395,8 +590,12 @@ export default function App() {
     reason: "",
   });
 
-  const activeModalKey = pendingVisitSave
-    ? "reminder-schedule"
+  const activeModalKey = pendingLeadMatch
+    ? "lead-match"
+    : openLeadVisits
+      ? "lead-visits"
+    : pendingVisitSave
+      ? "reminder-schedule"
     : openClosedDay
       ? "closed-day"
       : openBusiness
@@ -409,7 +608,9 @@ export default function App() {
               ? "close-day"
               : showForm
                 ? "visit-form"
-                : "";
+                : showTargetLists
+                  ? "target-lists"
+                  : "";
   const hasOpenModal = Boolean(activeModalKey);
 
   useEffect(() => {
@@ -486,6 +687,7 @@ export default function App() {
       setVisits(data.visits);
       setClosedDays(data.closedDays);
       setReminders(data.reminders);
+      setTargetLists(data.targetLists);
     }
 
     function refreshVisibleData() {
@@ -607,6 +809,23 @@ export default function App() {
   const selectedVisits = visits.filter(v => v.date === selectedDate);
   const selectedReminders = remindersByDay[selectedDate] || [];
   const selectedClosed = closedByDay[selectedDate];
+  const activeTargetList = targetLists.find(list => String(list.id) === String(openTargetListId)) || null;
+  const visibleTargetLeads = activeTargetList
+    ? activeTargetList.leads.filter(lead => {
+        const status = lead.status || LEAD_STATUS.pending;
+        const term = normalizeSearchText(leadSearchTerm);
+        const matchesStatus = leadStatusFilter === "all" || status === leadStatusFilter;
+        const matchesSearch = !term || [
+          lead.businessName,
+          lead.category,
+          lead.address,
+          lead.locality,
+          lead.postalCode,
+          lead.phone,
+        ].some(value => normalizeSearchText(value).includes(term));
+        return matchesStatus && matchesSearch;
+      })
+    : [];
 
   const searchResults = useMemo(() => {
     const term = normalizeSearchText(searchTerm);
@@ -653,7 +872,7 @@ export default function App() {
       .sort((a, b) => String(b.latestVisit.date).localeCompare(String(a.latestVisit.date)));
   }, [searchMode, searchTerm, showBadSearchResults, visits]);
 
-  const reminderSearchResults = useMemo(() => {
+  const reminderSearchResults = (() => {
     const term = normalizeSearchText(searchTerm);
 
     return reminders
@@ -678,14 +897,296 @@ export default function App() {
 
         return String(a.dueDate).localeCompare(String(b.dueDate));
       });
-  }, [reminderSearchFilter, reminders, searchMode, searchTerm, todayKey]);
+  })();
 
-  function persist(updatedVisits, updatedClosedDays, updatedReminders = reminders) {
+  function persist(
+    updatedVisits,
+    updatedClosedDays,
+    updatedReminders = reminders,
+    updatedTargetLists = targetLists
+  ) {
     saveData({
       visits: updatedVisits,
       closedDays: updatedClosedDays,
       reminders: updatedReminders,
+      targetLists: updatedTargetLists,
     });
+  }
+
+  function openTargetList(listId) {
+    setOpenTargetListId(listId);
+    setLeadImportMessage("");
+    setLeadSearchTerm("");
+    setLeadStatusFilter("all");
+  }
+
+  function createTargetList(e) {
+    e.preventDefault();
+    const name = newTargetListName.trim();
+    if (!name) return;
+
+    const exists = targetLists.some(list => normalizeSearchText(list.name) === normalizeSearchText(name));
+    if (exists) {
+      setLeadImportMessage("Ya existe una lista con ese nombre.");
+      return;
+    }
+
+    const newList = {
+      id: `target-list-${Date.now()}`,
+      name,
+      createdAt: new Date().toISOString(),
+      leads: [],
+    };
+    const updatedTargetLists = [...targetLists, newList];
+
+    setTargetLists(updatedTargetLists);
+    persist(visits, closedDays, reminders, updatedTargetLists);
+    setNewTargetListName("");
+    setLeadImportMessage("");
+    openTargetList(newList.id);
+  }
+
+  function deleteTargetList(list) {
+    if (!window.confirm(`¿Eliminar la lista “${list.name}” y sus ${list.leads.length} leads?`)) return;
+
+    const updatedTargetLists = targetLists.filter(currentList => String(currentList.id) !== String(list.id));
+    setTargetLists(updatedTargetLists);
+    persist(visits, closedDays, reminders, updatedTargetLists);
+    setOpenTargetListId(null);
+    setLeadImportMessage("");
+  }
+
+  function updateLeadStatus(listId, leadId, status) {
+    const now = new Date().toISOString();
+    const updatedTargetLists = targetLists.map(list => {
+      if (String(list.id) !== String(listId)) return list;
+
+      return {
+        ...list,
+        leads: list.leads.map(lead => {
+          if (String(lead.id) !== String(leadId)) return lead;
+          return {
+            ...lead,
+            status,
+            visitedAt: status === LEAD_STATUS.visited ? (lead.visitedAt || now) : lead.visitedAt,
+            updatedAt: now,
+          };
+        }),
+      };
+    });
+
+    setTargetLists(updatedTargetLists);
+    persist(visits, closedDays, reminders, updatedTargetLists);
+  }
+
+  function leadsAfterVisit(targetListsToUpdate, visit, leadIds) {
+    const idsToMark = new Set(uniqueIds(leadIds));
+    if (idsToMark.size === 0) return targetListsToUpdate;
+
+    const now = new Date().toISOString();
+    return targetListsToUpdate.map(list => ({
+      ...list,
+      leads: list.leads.map(lead => {
+        if (!idsToMark.has(String(lead.id))) return lead;
+
+        return {
+          ...lead,
+          status: LEAD_STATUS.visited,
+          visitedAt: lead.visitedAt || now,
+          visitIds: uniqueIds([...(lead.visitIds || []), visit.id]),
+          updatedAt: now,
+        };
+      }),
+    }));
+  }
+
+  function leadsAfterDeletingVisit(targetListsToUpdate, visitId) {
+    return targetListsToUpdate.map(list => ({
+      ...list,
+      leads: list.leads.map(lead => {
+        const visitIds = uniqueIds(lead.visitIds || []).filter(id => String(id) !== String(visitId));
+        if (visitIds.length === (lead.visitIds || []).length) return lead;
+
+        return {
+          ...lead,
+          visitIds,
+          status: visitIds.length === 0 && lead.status === LEAD_STATUS.visited
+            ? LEAD_STATUS.pending
+            : lead.status,
+          updatedAt: new Date().toISOString(),
+        };
+      }),
+    }));
+  }
+
+  function matchingLeadsForVisit(visit) {
+    const visitName = normalizeSearchText(visit.businessName);
+    const visitPhone = normalizePhone(visit.phone);
+    const visitAddress = normalizeSearchText(visit.address);
+    const visitPostalCode = normalizeSearchText(visit.postalCode);
+    const visitLocality = normalizeSearchText(visit.locality);
+
+    if (!visitName && !visitPhone && !visitAddress) return [];
+
+    return targetLists.flatMap(list =>
+      (list.leads || [])
+        .filter(lead => (lead.status || LEAD_STATUS.pending) === LEAD_STATUS.pending)
+        .map(lead => {
+          const reasons = [];
+          const leadName = normalizeSearchText(lead.businessName);
+          const leadPhone = normalizePhone(lead.phone);
+          const leadAddress = normalizeSearchText(lead.address);
+          const leadPostalCode = normalizeSearchText(lead.postalCode);
+          const leadLocality = normalizeSearchText(lead.locality);
+          const sameName = Boolean(visitName && leadName && visitName === leadName);
+
+          if (visitPhone.length >= 9 && leadPhone.length >= 9 && visitPhone === leadPhone) {
+            reasons.push("teléfono");
+          }
+          if (sameName && visitAddress && leadAddress && visitAddress === leadAddress) {
+            reasons.push("nombre y dirección");
+          }
+          if (sameName && visitPostalCode && leadPostalCode && visitPostalCode === leadPostalCode) {
+            reasons.push("nombre y código postal");
+          }
+          if (sameName && visitLocality && leadLocality && visitLocality === leadLocality) {
+            reasons.push("nombre y localidad");
+          }
+
+          return reasons.length ? { listId: list.id, listName: list.name, lead, reasons } : null;
+        })
+        .filter(Boolean)
+    );
+  }
+
+  function continueVisitSave(pendingSave) {
+    if (!visitCanHaveReminder(pendingSave.visit)) {
+      finishVisitSave(pendingSave);
+      return;
+    }
+
+    startReminderSchedule(pendingSave);
+  }
+
+  function openVisitFromLead(list, lead) {
+    setEditingVisitId(null);
+    setActiveReminderId(null);
+    setSelectedDate(todayKey);
+    setMonthDate(new Date(today.getFullYear(), today.getMonth(), 1));
+    setForm({
+      ...EMPTY_VISIT_FORM,
+      businessName: lead.businessName || "",
+      category: lead.category || "",
+      phone: lead.phone || "",
+      locality: lead.locality || "",
+      postalCode: lead.postalCode || "",
+      address: lead.address || "",
+      googleMaps: lead.googleMaps || "",
+      sourceLeadId: String(lead.id),
+      sourceListId: String(list.id),
+      linkedLeadIds: [String(lead.id)],
+    });
+    setLocationStatus("");
+    setShowTargetLists(false);
+    setShowForm(true);
+  }
+
+  function openVisitsForLead(list, lead) {
+    const leadVisits = visits
+      .filter(visit => {
+        const linkedIds = uniqueIds([...(visit.linkedLeadIds || []), visit.sourceLeadId]);
+        return linkedIds.includes(String(lead.id));
+      })
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+    setOpenLeadVisits({ listId: list.id, listName: list.name, lead, visits: leadVisits });
+    setShowTargetLists(false);
+  }
+
+  async function importLeadsFile(e) {
+    const file = e.target.files?.[0];
+    const listId = openTargetListId;
+    if (!file || !listId) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setLeadImportMessage("El archivo es demasiado grande (máximo 5 MB).");
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      const isCsv = file.name.toLowerCase().endsWith(".csv");
+      const isXlsx = file.name.toLowerCase().endsWith(".xlsx");
+      if (!isCsv && !isXlsx) {
+        throw new Error("unsupported-file");
+      }
+
+      const matrix = isCsv
+        ? csvRows(await file.text())
+        : await readSheet(file);
+      const rows = rowsFromMatrix(matrix);
+
+      if (rows.length === 0) throw new Error("empty");
+
+      const targetList = targetLists.find(list => String(list.id) === String(listId));
+      if (!targetList) throw new Error("missing-list");
+
+      const existingKeys = new Set(targetList.leads.map(leadKey).filter(Boolean));
+      const importedLeads = [];
+      let skipped = 0;
+      let excludedOutOfZone = 0;
+
+      rows.forEach((row, index) => {
+        const review = normalizeSearchText(importColumnValue(row, ["Revisión", "Revision"]));
+        if (review === "fuera de zona") {
+          excludedOutOfZone += 1;
+          return;
+        }
+
+        const lead = importedLeadFromRow(row, `lead-${Date.now()}-${index}`);
+        const key = leadKey(lead);
+        if (!lead.businessName) {
+          skipped += 1;
+          return;
+        }
+        if (key && existingKeys.has(key)) {
+          skipped += 1;
+          return;
+        }
+        if (key) existingKeys.add(key);
+        importedLeads.push(lead);
+      });
+
+      if (importedLeads.length === 0) {
+        setLeadImportMessage(
+          excludedOutOfZone
+            ? `No se han importado leads nuevos. ${excludedOutOfZone} fuera de zona excluido${excludedOutOfZone === 1 ? "" : "s"}.`
+            : "No se han encontrado leads nuevos. Revisa que exista la columna Negocio."
+        );
+        return;
+      }
+
+      const updatedTargetLists = targetLists.map(list =>
+        String(list.id) === String(listId)
+          ? {
+              ...list,
+              leads: [...list.leads, ...importedLeads],
+              lastImportedAt: new Date().toISOString(),
+              lastImportedFileName: file.name,
+            }
+          : list
+      );
+
+      setTargetLists(updatedTargetLists);
+      persist(visits, closedDays, reminders, updatedTargetLists);
+      setLeadImportMessage(
+        `${importedLeads.length} ${importedLeads.length === 1 ? "lead importado" : "leads importados"}${excludedOutOfZone ? ` · ${excludedOutOfZone} fuera de zona excluido${excludedOutOfZone === 1 ? "" : "s"}` : ""}${skipped ? ` · ${skipped} omitido${skipped === 1 ? "" : "s"}` : ""}.`
+      );
+    } catch {
+      setLeadImportMessage("No se pudo leer el archivo. Usa un Excel .xlsx o CSV con la columna Negocio.");
+    } finally {
+      e.target.value = "";
+    }
   }
 
   function startReminderSchedule(pendingSave) {
@@ -703,6 +1204,7 @@ export default function App() {
 
   function finishVisitSave(pendingSave, dueDate = "") {
     let updatedReminders = pendingSave.reminders;
+    const updatedTargetLists = pendingSave.targetLists || targetLists;
 
     if (dueDate) {
       updatedReminders = upsertPendingReminderForVisit(updatedReminders, pendingSave.visit, dueDate);
@@ -717,7 +1219,8 @@ export default function App() {
 
     setVisits(pendingSave.visits);
     setReminders(updatedReminders);
-    persist(pendingSave.visits, closedDays, updatedReminders);
+    setTargetLists(updatedTargetLists);
+    persist(pendingSave.visits, closedDays, updatedReminders, updatedTargetLists);
     setPendingVisitSave(null);
     closeVisitForm();
   }
@@ -725,6 +1228,38 @@ export default function App() {
   function confirmReminderSchedule() {
     if (!pendingVisitSave || !reminderSelectedDate) return;
     finishVisitSave(pendingVisitSave, reminderSelectedDate);
+  }
+
+  function confirmLeadMatches() {
+    if (!pendingLeadMatch) return;
+
+    const selectedLeadIds = uniqueIds(pendingLeadMatch.selectedLeadIds);
+    const linkedVisit = {
+      ...pendingLeadMatch.pendingSave.visit,
+      linkedLeadIds: uniqueIds([
+        ...(pendingLeadMatch.pendingSave.visit.linkedLeadIds || []),
+        ...selectedLeadIds,
+      ]),
+    };
+    const updatedVisits = pendingLeadMatch.pendingSave.visits.map(visit =>
+      String(visit.id) === String(linkedVisit.id) ? linkedVisit : visit
+    );
+    const updatedTargetLists = leadsAfterVisit(targetLists, linkedVisit, selectedLeadIds);
+
+    setPendingLeadMatch(null);
+    continueVisitSave({
+      ...pendingLeadMatch.pendingSave,
+      visits: updatedVisits,
+      visit: linkedVisit,
+      targetLists: updatedTargetLists,
+    });
+  }
+
+  function skipLeadMatches() {
+    if (!pendingLeadMatch) return;
+    const pendingSave = pendingLeadMatch.pendingSave;
+    setPendingLeadMatch(null);
+    continueVisitSave(pendingSave);
   }
 
   function closeVisitForm() {
@@ -903,7 +1438,13 @@ export default function App() {
 
       if (!visitCanHaveReminder(editedVisit)) {
         updatedReminders = removePendingRemindersForVisit(updatedReminders, editedVisit.id);
-        finishVisitSave({ visits: updatedVisits, reminders: updatedReminders, visit: editedVisit, completedAt: now });
+        finishVisitSave({
+          visits: updatedVisits,
+          reminders: updatedReminders,
+          visit: editedVisit,
+          completedAt: now,
+          targetLists,
+        });
         return;
       }
 
@@ -912,6 +1453,7 @@ export default function App() {
         reminders: updatedReminders,
         visit: editedVisit,
         completedAt: now,
+        targetLists,
       });
       return;
     }
@@ -923,20 +1465,36 @@ export default function App() {
       ...form,
     };
 
-    const pendingSave = {
+    let pendingSave = {
       visits: [...visits, newVisit],
       reminders,
       visit: newVisit,
       completedReminderId: activeReminderId,
       completedAt: now,
+      targetLists,
     };
 
-    if (!visitCanHaveReminder(newVisit)) {
-      finishVisitSave(pendingSave);
+    const sourceLeadIds = uniqueIds([...(newVisit.linkedLeadIds || []), newVisit.sourceLeadId]);
+    if (sourceLeadIds.length > 0) {
+      pendingSave = {
+        ...pendingSave,
+        targetLists: leadsAfterVisit(targetLists, newVisit, sourceLeadIds),
+      };
+      continueVisitSave(pendingSave);
       return;
     }
 
-    startReminderSchedule(pendingSave);
+    const matchingLeads = matchingLeadsForVisit(newVisit);
+    if (matchingLeads.length > 0) {
+      setPendingLeadMatch({
+        pendingSave,
+        matches: matchingLeads,
+        selectedLeadIds: matchingLeads.map(match => String(match.lead.id)),
+      });
+      return;
+    }
+
+    continueVisitSave(pendingSave);
   }
 
   function closeDay(e) {
@@ -965,14 +1523,20 @@ export default function App() {
 
   setForm({
     businessName: visit.businessName || "",
+    category: visit.category || "",
     contactName: visit.contactName || "",
+    phone: visit.phone || "",
     locality: visit.locality || "",
     neighborhood: visit.neighborhood || "",
     postalCode: visit.postalCode || "",
     address: visit.address || "",
+    googleMaps: visit.googleMaps || "",
     visitType: visit.visitType || tiposVisita[0],
     notes: visit.notes || "",
     visitValue: visit.visitValue || "normal",
+    sourceLeadId: visit.sourceLeadId || "",
+    sourceListId: visit.sourceListId || "",
+    linkedLeadIds: uniqueIds(visit.linkedLeadIds || []),
     latitude: visit.latitude || "",
     longitude: visit.longitude || "",
     locationAccuracy: visit.locationAccuracy || "",
@@ -990,9 +1554,11 @@ export default function App() {
     const updatedReminders = reminders.filter(reminder =>
       String(reminder.sourceVisitId) !== String(id)
     );
+    const updatedTargetLists = leadsAfterDeletingVisit(targetLists, id);
     setVisits(updated);
     setReminders(updatedReminders);
-    persist(updated, closedDays, updatedReminders);
+    setTargetLists(updatedTargetLists);
+    persist(updated, closedDays, updatedReminders, updatedTargetLists);
     setOpenVisit(null);
   }
 
@@ -1084,9 +1650,9 @@ export default function App() {
   function exportAllBackup() {
     const backup = {
       app: "visitas-app",
-      version: 5,
+      version: 6,
       exportedAt: new Date().toISOString(),
-      data: { visits, closedDays, reminders },
+      data: { visits, closedDays, reminders, targetLists },
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
@@ -1124,6 +1690,7 @@ export default function App() {
         setVisits(importedData.visits);
         setClosedDays(importedData.closedDays);
         setReminders(importedData.reminders);
+        setTargetLists(importedData.targetLists);
         saveData(importedData);
         setBackupStatus("Backup importado correctamente.");
       } catch {
@@ -1260,6 +1827,17 @@ export default function App() {
             🔎 Buscar visitas y recordatorios
           </button>
 
+          <button
+            className="secondaryBtn"
+            onClick={() => {
+              setShowTargetLists(true);
+              setOpenTargetListId(null);
+              setLeadImportMessage("");
+            }}
+          >
+            Listas de clientes objetivos{targetLists.length ? ` (${targetLists.length})` : ""}
+          </button>
+
           <button className="secondaryBtn" onClick={exportCSV} disabled={selectedVisits.length === 0}>
             Exportar día a Excel/CSV
           </button>
@@ -1358,8 +1936,22 @@ export default function App() {
             <label>Nombre negocio</label>
             <input required value={form.businessName} onChange={e => setForm({ ...form, businessName: e.target.value })} />
 
+            <label>Categoría</label>
+            <input
+              placeholder="Ej. Barbería, peluquería, estética..."
+              value={form.category}
+              onChange={e => setForm({ ...form, category: e.target.value })}
+            />
+
             <label>Nombre referente</label>
             <input value={form.contactName} onChange={e => setForm({ ...form, contactName: e.target.value })} />
+
+            <label>Teléfono</label>
+            <input
+              inputMode="tel"
+              value={form.phone}
+              onChange={e => setForm({ ...form, phone: e.target.value })}
+            />
 
             <label>Localidad</label>
             <input value={form.locality} onChange={e => setForm({ ...form, locality: e.target.value })} />
@@ -1376,6 +1968,14 @@ export default function App() {
 
             <label>Dirección aproximada</label>
             <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+
+            <label>Enlace de Google Maps</label>
+            <input
+              type="url"
+              placeholder="https://maps.google.com/..."
+              value={form.googleMaps}
+              onChange={e => setForm({ ...form, googleMaps: e.target.value })}
+            />
 
             <label>Valor de la visita</label>
             <select value={form.visitValue} onChange={e => setForm({ ...form, visitValue: e.target.value })}>
@@ -1401,6 +2001,241 @@ export default function App() {
   {editingVisitId ? "Guardar cambios" : "Guardar visita"}
 </button>
           </form>
+        </div>
+      )}
+
+      {showTargetLists && (
+        <div className="modal">
+          <div className="box targetListsBox">
+            <div className="modalHead">
+              <h2>{activeTargetList ? activeTargetList.name : "Listas de clientes objetivos"}</h2>
+              <button type="button" onClick={() => setShowTargetLists(false)}>×</button>
+            </div>
+
+            {!activeTargetList ? (
+              <>
+                <p className="small">Crea una lista y después importa su Excel o CSV.</p>
+                <form className="targetListCreate" onSubmit={createTargetList}>
+                  <input
+                    required
+                    placeholder="Ej. Potenciales clientes El Ejido"
+                    value={newTargetListName}
+                    onChange={e => setNewTargetListName(e.target.value)}
+                  />
+                  <button className="mainBtn" type="submit">Crear lista</button>
+                </form>
+
+                {leadImportMessage && <p className="small targetListMessage">{leadImportMessage}</p>}
+
+                <div className="targetListCards">
+                  {targetLists.length === 0 && (
+                    <div className="empty">Todavía no hay listas. Crea la primera para importar tus leads.</div>
+                  )}
+                  {targetLists.map(list => {
+                    const pendingCount = list.leads.filter(lead => (lead.status || LEAD_STATUS.pending) === LEAD_STATUS.pending).length;
+                    const visitedCount = list.leads.filter(lead => lead.status === LEAD_STATUS.visited).length;
+                    return (
+                      <button type="button" className="targetListCard" key={list.id} onClick={() => openTargetList(list.id)}>
+                        <strong>{list.name}</strong>
+                        <span>{list.leads.length} {list.leads.length === 1 ? "lead" : "leads"}</span>
+                        <small>{pendingCount} pendientes · {visitedCount} visitados</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="backToListsBtn"
+                  onClick={() => {
+                    setOpenTargetListId(null);
+                    setLeadImportMessage("");
+                  }}
+                >
+                  ← Todas las listas
+                </button>
+
+                <div className="targetListTools">
+                  <button type="button" className="mainBtn" onClick={() => leadImportInputRef.current?.click()}>
+                    Importar Excel o CSV
+                  </button>
+                  <button type="button" className="deleteBtn compactDeleteBtn" onClick={() => deleteTargetList(activeTargetList)}>
+                    Eliminar lista
+                  </button>
+                </div>
+                <input
+                  ref={leadImportInputRef}
+                  type="file"
+                  accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                  onChange={importLeadsFile}
+                  style={{ display: "none" }}
+                />
+
+                <p className="small">Columnas: Negocio, Categoría, Dirección, Localidad, Código postal, Teléfono y Google Maps.</p>
+                {leadImportMessage && <p className="small targetListMessage">{leadImportMessage}</p>}
+
+                <input
+                  className="leadSearchInput"
+                  placeholder="Buscar en esta lista"
+                  value={leadSearchTerm}
+                  onChange={e => setLeadSearchTerm(e.target.value)}
+                />
+                <div className="searchTabs three leadFilters">
+                  <button type="button" className={leadStatusFilter === "all" ? "active" : ""} onClick={() => setLeadStatusFilter("all")}>Todos</button>
+                  <button type="button" className={leadStatusFilter === LEAD_STATUS.pending ? "active" : ""} onClick={() => setLeadStatusFilter(LEAD_STATUS.pending)}>Pendientes</button>
+                  <button type="button" className={leadStatusFilter === LEAD_STATUS.visited ? "active" : ""} onClick={() => setLeadStatusFilter(LEAD_STATUS.visited)}>Visitados</button>
+                </div>
+
+                <div className="targetLeadList">
+                  {visibleTargetLeads.length === 0 && (
+                    <div className="empty">No hay leads que coincidan con este filtro.</div>
+                  )}
+                  {visibleTargetLeads.map(lead => {
+                    const linkedVisits = visits.filter(visit =>
+                      uniqueIds([...(visit.linkedLeadIds || []), visit.sourceLeadId]).includes(String(lead.id))
+                    );
+                    const status = lead.status || LEAD_STATUS.pending;
+
+                    return (
+                      <article className={`targetLeadCard ${status}`} key={lead.id}>
+                        <div className="targetLeadHead">
+                          <div>
+                            <h3>{lead.businessName}</h3>
+                            {lead.category && <span>{lead.category}</span>}
+                          </div>
+                          <em className={`leadStatus ${status}`}>{leadStatusLabel(status)}</em>
+                        </div>
+
+                        <p>{[lead.address, lead.postalCode, lead.locality].filter(Boolean).join(" · ") || "Sin dirección"}</p>
+                        {lead.phone && <p>Tel. {lead.phone}</p>}
+
+                        <div className="mapActions">
+                          {mapSearchUrl(lead) && <a href={mapSearchUrl(lead)} target="_blank" rel="noreferrer">Abrir en Maps</a>}
+                          {mapDirectionsUrl(lead) && <a href={mapDirectionsUrl(lead)} target="_blank" rel="noreferrer">Cómo llegar</a>}
+                        </div>
+
+                        <div className="leadActions">
+                          <button type="button" className="mainBtn" onClick={() => openVisitFromLead(activeTargetList, lead)}>Crear visita</button>
+                          {status !== LEAD_STATUS.visited && (
+                            <button type="button" onClick={() => updateLeadStatus(activeTargetList.id, lead.id, LEAD_STATUS.visited)}>Marcar visitado</button>
+                          )}
+                          {status !== LEAD_STATUS.pending && (
+                            <button type="button" onClick={() => updateLeadStatus(activeTargetList.id, lead.id, LEAD_STATUS.pending)}>Marcar pendiente</button>
+                          )}
+                          {status !== LEAD_STATUS.discarded && (
+                            <button type="button" onClick={() => updateLeadStatus(activeTargetList.id, lead.id, LEAD_STATUS.discarded)}>Descartar</button>
+                          )}
+                          {linkedVisits.length > 0 && (
+                            <button type="button" onClick={() => openVisitsForLead(activeTargetList, lead)}>
+                              Ver visitas ({linkedVisits.length})
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {pendingLeadMatch && (
+        <div className="modal">
+          <div className="box leadMatchBox">
+            <div className="modalHead">
+              <h2>Coincidencia con una lista</h2>
+              <button type="button" onClick={() => setPendingLeadMatch(null)}>×</button>
+            </div>
+
+            <p>
+              Esta visita coincide con {pendingLeadMatch.matches.length} {pendingLeadMatch.matches.length === 1 ? "lead" : "leads"}.
+              Selecciona cuáles quieres marcar como visitados.
+            </p>
+
+            <div className="leadMatchList">
+              {pendingLeadMatch.matches.map(match => {
+                const leadId = String(match.lead.id);
+                const isSelected = pendingLeadMatch.selectedLeadIds.includes(leadId);
+                return (
+                  <label className="leadMatchItem" key={`${match.listId}-${leadId}`}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={e => {
+                        setPendingLeadMatch(current => ({
+                          ...current,
+                          selectedLeadIds: e.target.checked
+                            ? uniqueIds([...current.selectedLeadIds, leadId])
+                            : current.selectedLeadIds.filter(id => String(id) !== leadId),
+                        }));
+                      }}
+                    />
+                    <span>
+                      <strong>{match.lead.businessName}</strong>
+                      <small>{match.listName} · Coincide por {match.reasons.join(", ")}</small>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <button type="button" className="mainBtn" onClick={confirmLeadMatches}>
+              Guardar visita y marcar seleccionados
+            </button>
+            <button type="button" className="secondaryBtn" onClick={skipLeadMatches}>
+              Guardar sin marcar en la lista
+            </button>
+            <button type="button" className="secondaryBtn" onClick={() => setPendingLeadMatch(null)}>
+              Volver a editar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {openLeadVisits && (
+        <div className="modal">
+          <div className="box">
+            <div className="modalHead">
+              <h2>Visitas de {openLeadVisits.lead.businessName}</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenLeadVisits(null);
+                  setOpenTargetListId(openLeadVisits.listId);
+                  setShowTargetLists(true);
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {openLeadVisits.visits.length === 0 ? (
+              <div className="empty">Todavía no hay visitas asociadas a este lead.</div>
+            ) : (
+              <div className="historyList">
+                {openLeadVisits.visits.map(visit => (
+                  <button
+                    type="button"
+                    className="historyCard"
+                    key={visit.id}
+                    onClick={() => {
+                      setOpenLeadVisits(null);
+                      setOpenVisit(visit);
+                    }}
+                  >
+                    <strong>{formatVisitDate(visit.date)}</strong>
+                    <span>{visit.visitType || "Sin tipo de visita"}</span>
+                    <em style={{ backgroundColor: colorValue(visit.visitValue) }}>{labelValue(visit.visitValue)}</em>
+                    {visit.notes && <small>{visit.notes}</small>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1539,7 +2374,9 @@ export default function App() {
             </div>
 
             <h3>{openVisit.businessName}</h3>
+            <p><b>Categoría:</b> {openVisit.category || "—"}</p>
             <p><b>Referente:</b> {openVisit.contactName || "—"}</p>
+            <p><b>Teléfono:</b> {openVisit.phone || "—"}</p>
             <p><b>Localidad:</b> {openVisit.locality || "—"}</p>
             <p><b>Barrio/Zona:</b> {openVisit.neighborhood || "—"}</p>
             <p><b>Código postal:</b> {openVisit.postalCode || "—"}</p>
@@ -1558,6 +2395,13 @@ export default function App() {
                   Ver en Google Maps
                 </a>
               </p>
+            )}
+
+            {mapSearchUrl(openVisit) && (
+              <div className="mapActions">
+                <a href={mapSearchUrl(openVisit)} target="_blank" rel="noreferrer">Abrir en Maps</a>
+                <a href={mapDirectionsUrl(openVisit)} target="_blank" rel="noreferrer">Cómo llegar</a>
+              </div>
             )}
 
             <p><b>Notas:</b></p>
