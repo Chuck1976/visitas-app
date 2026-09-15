@@ -500,6 +500,39 @@ function leadKey(lead) {
     .join("|");
 }
 
+function visitLeadMatchReasons(visit, lead) {
+  const visitName = normalizeSearchText(visit.businessName);
+  const visitPhone = normalizePhone(visit.phone);
+  const visitAddress = normalizeSearchText(visit.address);
+  const visitPostalCode = normalizeSearchText(visit.postalCode);
+  const visitLocality = normalizeSearchText(visit.locality);
+  const leadName = normalizeSearchText(lead.businessName);
+  const leadPhone = normalizePhone(lead.phone);
+  const leadAddress = normalizeSearchText(lead.address);
+  const leadPostalCode = normalizeSearchText(lead.postalCode);
+  const leadLocality = normalizeSearchText(lead.locality);
+
+  if (!visitName && !visitPhone && !visitAddress) return [];
+
+  const reasons = [];
+  const sameName = Boolean(visitName && leadName && visitName === leadName);
+
+  if (visitPhone.length >= 9 && leadPhone.length >= 9 && visitPhone === leadPhone) {
+    reasons.push("teléfono");
+  }
+  if (sameName && visitAddress && leadAddress && visitAddress === leadAddress) {
+    reasons.push("nombre y dirección");
+  }
+  if (sameName && visitPostalCode && leadPostalCode && visitPostalCode === leadPostalCode) {
+    reasons.push("nombre y código postal");
+  }
+  if (sameName && visitLocality && leadLocality && visitLocality === leadLocality) {
+    reasons.push("nombre y localidad");
+  }
+
+  return reasons;
+}
+
 function mapSearchUrl(record) {
   const savedUrl = String(record?.googleMaps || "").trim();
   if (/^https?:\/\//i.test(savedUrl)) return savedUrl;
@@ -579,6 +612,7 @@ export default function App() {
   const [pendingVisitSave, setPendingVisitSave] = useState(null);
   const [reminderMonthDate, setReminderMonthDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [reminderSelectedDate, setReminderSelectedDate] = useState(todayKey);
+  const [reminderToReschedule, setReminderToReschedule] = useState(null);
   const [searchScope, setSearchScope] = useState("visits");
   const [searchMode, setSearchMode] = useState("businessName");
   const [searchTerm, setSearchTerm] = useState("");
@@ -596,6 +630,8 @@ export default function App() {
       ? "lead-visits"
     : pendingVisitSave
       ? "reminder-schedule"
+    : reminderToReschedule
+      ? "reminder-reschedule"
     : openClosedDay
       ? "closed-day"
       : openBusiness
@@ -1020,42 +1056,59 @@ export default function App() {
   }
 
   function matchingLeadsForVisit(visit) {
-    const visitName = normalizeSearchText(visit.businessName);
-    const visitPhone = normalizePhone(visit.phone);
-    const visitAddress = normalizeSearchText(visit.address);
-    const visitPostalCode = normalizeSearchText(visit.postalCode);
-    const visitLocality = normalizeSearchText(visit.locality);
-
-    if (!visitName && !visitPhone && !visitAddress) return [];
-
     return targetLists.flatMap(list =>
       (list.leads || [])
         .filter(lead => (lead.status || LEAD_STATUS.pending) === LEAD_STATUS.pending)
         .map(lead => {
-          const reasons = [];
-          const leadName = normalizeSearchText(lead.businessName);
-          const leadPhone = normalizePhone(lead.phone);
-          const leadAddress = normalizeSearchText(lead.address);
-          const leadPostalCode = normalizeSearchText(lead.postalCode);
-          const leadLocality = normalizeSearchText(lead.locality);
-          const sameName = Boolean(visitName && leadName && visitName === leadName);
-
-          if (visitPhone.length >= 9 && leadPhone.length >= 9 && visitPhone === leadPhone) {
-            reasons.push("teléfono");
-          }
-          if (sameName && visitAddress && leadAddress && visitAddress === leadAddress) {
-            reasons.push("nombre y dirección");
-          }
-          if (sameName && visitPostalCode && leadPostalCode && visitPostalCode === leadPostalCode) {
-            reasons.push("nombre y código postal");
-          }
-          if (sameName && visitLocality && leadLocality && visitLocality === leadLocality) {
-            reasons.push("nombre y localidad");
-          }
+          const reasons = visitLeadMatchReasons(visit, lead);
 
           return reasons.length ? { listId: list.id, listName: list.name, lead, reasons } : null;
         })
         .filter(Boolean)
+    );
+  }
+
+  function matchingVisitsForLead(lead) {
+    return visits
+      .map(visit => {
+        const reasons = visitLeadMatchReasons(visit, lead);
+        return reasons.length ? { visit, reasons } : null;
+      })
+      .filter(Boolean);
+  }
+
+  function reconcileTargetListWithVisitHistory(list) {
+    let matchedLeads = 0;
+    const now = new Date().toISOString();
+    const updatedTargetLists = targetLists.map(currentList => {
+      if (String(currentList.id) !== String(list.id)) return currentList;
+
+      return {
+        ...currentList,
+        leads: currentList.leads.map(lead => {
+          if ((lead.status || LEAD_STATUS.pending) !== LEAD_STATUS.pending) return lead;
+
+          const matchingVisits = matchingVisitsForLead(lead);
+          if (matchingVisits.length === 0) return lead;
+
+          matchedLeads += 1;
+          return {
+            ...lead,
+            status: LEAD_STATUS.visited,
+            visitedAt: now,
+            visitIds: uniqueIds([...(lead.visitIds || []), ...matchingVisits.map(match => match.visit.id)]),
+            updatedAt: now,
+          };
+        }),
+      };
+    });
+
+    setTargetLists(updatedTargetLists);
+    persist(visits, closedDays, reminders, updatedTargetLists);
+    setLeadImportMessage(
+      matchedLeads
+        ? `${matchedLeads} ${matchedLeads === 1 ? "lead marcado como visitado" : "leads marcados como visitados"} por el historial.`
+        : "No hay coincidencias claras con el historial de visitas."
     );
   }
 
@@ -1092,10 +1145,11 @@ export default function App() {
   }
 
   function openVisitsForLead(list, lead) {
+    const recordedVisitIds = new Set(uniqueIds(lead.visitIds || []).map(String));
     const leadVisits = visits
       .filter(visit => {
         const linkedIds = uniqueIds([...(visit.linkedLeadIds || []), visit.sourceLeadId]);
-        return linkedIds.includes(String(lead.id));
+        return linkedIds.includes(String(lead.id)) || recordedVisitIds.has(String(visit.id));
       })
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
@@ -1135,6 +1189,7 @@ export default function App() {
       const importedLeads = [];
       let skipped = 0;
       let excludedOutOfZone = 0;
+      let matchedExistingLeads = 0;
 
       rows.forEach((row, index) => {
         const review = normalizeSearchText(importColumnValue(row, ["Revisión", "Revision"]));
@@ -1153,6 +1208,17 @@ export default function App() {
           skipped += 1;
           return;
         }
+
+        const matchingVisits = matchingVisitsForLead(lead);
+        if (matchingVisits.length > 0) {
+          const now = new Date().toISOString();
+          lead.status = LEAD_STATUS.visited;
+          lead.visitedAt = now;
+          lead.visitIds = uniqueIds(matchingVisits.map(match => match.visit.id));
+          lead.updatedAt = now;
+          matchedExistingLeads += 1;
+        }
+
         if (key) existingKeys.add(key);
         importedLeads.push(lead);
       });
@@ -1180,7 +1246,7 @@ export default function App() {
       setTargetLists(updatedTargetLists);
       persist(visits, closedDays, reminders, updatedTargetLists);
       setLeadImportMessage(
-        `${importedLeads.length} ${importedLeads.length === 1 ? "lead importado" : "leads importados"}${excludedOutOfZone ? ` · ${excludedOutOfZone} fuera de zona excluido${excludedOutOfZone === 1 ? "" : "s"}` : ""}${skipped ? ` · ${skipped} omitido${skipped === 1 ? "" : "s"}` : ""}.`
+        `${importedLeads.length} ${importedLeads.length === 1 ? "lead importado" : "leads importados"}${matchedExistingLeads ? ` · ${matchedExistingLeads} ${matchedExistingLeads === 1 ? "marcado como visitado por el historial" : "marcados como visitados por el historial"}` : ""}${excludedOutOfZone ? ` · ${excludedOutOfZone} fuera de zona excluido${excludedOutOfZone === 1 ? "" : "s"}` : ""}${skipped ? ` · ${skipped} omitido${skipped === 1 ? "" : "s"}` : ""}.`
       );
     } catch {
       setLeadImportMessage("No se pudo leer el archivo. Usa un Excel .xlsx o CSV con la columna Negocio.");
@@ -1588,6 +1654,39 @@ export default function App() {
     updateReminderStatus(reminder.id, REMINDER_STATUS.dismissed);
   }
 
+  function openReminderReschedule(reminder) {
+    if (reminder.status !== REMINDER_STATUS.pending) return;
+
+    const sourceVisit = visits.find(visit =>
+      String(visit.id) === String(reminder.sourceVisitId)
+    );
+    const dueDate = reminder.dueDate || todayKey;
+    const parsedDueDate = parseKey(dueDate);
+
+    setReminderToReschedule({
+      ...reminder,
+      originalVisitDate: reminder.originalVisitDate || sourceVisit?.date || "",
+    });
+    setReminderSelectedDate(dueDate);
+    setReminderMonthDate(new Date(parsedDueDate.getFullYear(), parsedDueDate.getMonth(), 1));
+    setShowSearch(false);
+  }
+
+  function saveRescheduledReminder() {
+    if (!reminderToReschedule || !reminderSelectedDate) return;
+
+    const updatedAt = new Date().toISOString();
+    const updatedReminders = reminders.map(reminder =>
+      String(reminder.id) === String(reminderToReschedule.id)
+        ? { ...reminder, dueDate: reminderSelectedDate, updatedAt }
+        : reminder
+    );
+
+    setReminders(updatedReminders);
+    persist(visits, closedDays, updatedReminders);
+    setReminderToReschedule(null);
+  }
+
   function deleteReminder(reminder) {
     if (!window.confirm("¿Seguro que quieres eliminar este recordatorio?")) return;
 
@@ -1885,6 +1984,9 @@ export default function App() {
                 </small>
                 <em>{reminderStatusLabel(reminder.status)}</em>
                 <div className="reminderActions">
+                  <button type="button" onClick={() => openReminderReschedule(reminder)}>
+                    Cambiar fecha
+                  </button>
                   <button type="button" onClick={() => openVisitFromReminder(reminder)}>
                     Registrar visita
                   </button>
@@ -2061,6 +2163,9 @@ export default function App() {
                   <button type="button" className="mainBtn" onClick={() => leadImportInputRef.current?.click()}>
                     Importar Excel o CSV
                   </button>
+                  <button type="button" className="secondaryBtn" onClick={() => reconcileTargetListWithVisitHistory(activeTargetList)}>
+                    Cruzar con historial
+                  </button>
                   <button type="button" className="deleteBtn compactDeleteBtn" onClick={() => deleteTargetList(activeTargetList)}>
                     Eliminar lista
                   </button>
@@ -2093,8 +2198,10 @@ export default function App() {
                     <div className="empty">No hay leads que coincidan con este filtro.</div>
                   )}
                   {visibleTargetLeads.map(lead => {
+                    const recordedVisitIds = new Set(uniqueIds(lead.visitIds || []).map(String));
                     const linkedVisits = visits.filter(visit =>
-                      uniqueIds([...(visit.linkedLeadIds || []), visit.sourceLeadId]).includes(String(lead.id))
+                      uniqueIds([...(visit.linkedLeadIds || []), visit.sourceLeadId]).includes(String(lead.id)) ||
+                      recordedVisitIds.has(String(visit.id))
                     );
                     const status = lead.status || LEAD_STATUS.pending;
 
@@ -2329,6 +2436,81 @@ export default function App() {
             </button>
             <button type="button" className="secondaryBtn" onClick={cancelReminderSchedule}>
               Volver a editar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {reminderToReschedule && (
+        <div className="modal reminderScheduleModal">
+          <div className="box reminderScheduleBox">
+            <div className="modalHead">
+              <h2>Cambiar fecha del recordatorio</h2>
+              <button type="button" onClick={() => setReminderToReschedule(null)}>×</button>
+            </div>
+
+            <h3>{reminderToReschedule.businessName}</h3>
+            <p className="small">
+              Fecha actual: {formatVisitDate(reminderToReschedule.dueDate)}
+            </p>
+
+            <div className="scheduleMonthHead">
+              <button
+                type="button"
+                onClick={() => setReminderMonthDate(new Date(reminderMonthDate.getFullYear(), reminderMonthDate.getMonth() - 1, 1))}
+              >
+                ‹
+              </button>
+              <strong>
+                {reminderMonthDate.toLocaleDateString("es-ES", {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </strong>
+              <button
+                type="button"
+                onClick={() => setReminderMonthDate(new Date(reminderMonthDate.getFullYear(), reminderMonthDate.getMonth() + 1, 1))}
+              >
+                ›
+              </button>
+            </div>
+
+            <div className="scheduleCalendar">
+              {["L", "M", "X", "J", "V", "S", "D"].map(day => (
+                <div className="scheduleWeekday" key={day}>{day}</div>
+              ))}
+
+              {reminderCalendarDays.map(day => {
+                const key = dateKey(day);
+                const isCurrentMonth = day.getMonth() === reminderMonthDate.getMonth();
+                const isSelected = key === reminderSelectedDate;
+                const isBeforeSourceVisit = Boolean(
+                  reminderToReschedule.originalVisitDate && key < reminderToReschedule.originalVisitDate
+                );
+
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    disabled={isBeforeSourceVisit}
+                    className={`scheduleDay ${!isCurrentMonth ? "muted" : ""} ${isSelected ? "selected" : ""}`}
+                    onClick={() => setReminderSelectedDate(key)}
+                  >
+                    {day.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="scheduleDateText">
+              Nueva fecha: {formatVisitDate(reminderSelectedDate)}
+            </p>
+
+            <button type="button" className="mainBtn" onClick={saveRescheduledReminder}>
+              Guardar nueva fecha
+            </button>
+            <button type="button" className="secondaryBtn" onClick={() => setReminderToReschedule(null)}>
+              Cancelar
             </button>
           </div>
         </div>
@@ -2590,6 +2772,9 @@ export default function App() {
                       <>
                         <button type="button" onClick={() => openVisitFromReminder(reminder)}>
                           Registrar visita
+                        </button>
+                        <button type="button" onClick={() => openReminderReschedule(reminder)}>
+                          Cambiar fecha
                         </button>
                         <button type="button" onClick={() => markReminderDone(reminder)}>
                           Marcar pasado
