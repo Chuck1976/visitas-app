@@ -500,6 +500,40 @@ function leadKey(lead) {
     .join("|");
 }
 
+const GENERIC_BUSINESS_NAME_TOKENS = new Set([
+  "barber", "barberia", "barbero", "belleza", "canina", "centro", "clinica",
+  "dog", "estetica", "estilista", "fisioterapia", "hair", "nail", "nails",
+  "peluqueria", "peluquero", "pet", "salon", "spa", "unas",
+]);
+
+function businessNameTokens(value) {
+  return normalizeSearchText(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter(Boolean);
+}
+
+function businessNamesClearlyMatch(firstName, secondName) {
+  const firstTokens = businessNameTokens(firstName);
+  const secondTokens = businessNameTokens(secondName);
+  const firstComparable = firstTokens.join(" ");
+  const secondComparable = secondTokens.join(" ");
+
+  if (!firstComparable || !secondComparable) return false;
+  if (firstComparable === secondComparable) return true;
+
+  const [shorter, longer] = firstTokens.length <= secondTokens.length
+    ? [firstTokens, secondTokens]
+    : [secondTokens, firstTokens];
+  const distinctiveTokens = shorter.filter(token =>
+    token.length >= 3 && !GENERIC_BUSINESS_NAME_TOKENS.has(token)
+  );
+
+  return distinctiveTokens.length > 0 &&
+    distinctiveTokens.every(token => longer.includes(token)) &&
+    (distinctiveTokens.length >= 2 || distinctiveTokens[0].length >= 5);
+}
+
 function visitLeadMatchReasons(visit, lead) {
   const visitName = normalizeSearchText(visit.businessName);
   const visitPhone = normalizePhone(visit.phone);
@@ -515,7 +549,12 @@ function visitLeadMatchReasons(visit, lead) {
   if (!visitName && !visitPhone && !visitAddress) return [];
 
   const reasons = [];
-  const sameName = Boolean(visitName && leadName && visitName === leadName);
+  const sameName = businessNamesClearlyMatch(visit.businessName, lead.businessName);
+  const exactName = Boolean(visitName && leadName && visitName === leadName);
+
+  if (sameName) {
+    reasons.push(exactName ? "nombre" : "nombre equivalente");
+  }
 
   if (visitPhone.length >= 9 && leadPhone.length >= 9 && visitPhone === leadPhone) {
     reasons.push("teléfono");
@@ -1107,8 +1146,8 @@ export default function App() {
     persist(visits, closedDays, reminders, updatedTargetLists);
     setLeadImportMessage(
       matchedLeads
-        ? `${matchedLeads} ${matchedLeads === 1 ? "lead marcado como visitado" : "leads marcados como visitados"} por el historial.`
-        : "No hay coincidencias claras con el historial de visitas."
+        ? `Cruce terminado: ${matchedLeads} ${matchedLeads === 1 ? "lead marcado como visitado" : "leads marcados como visitados"} por el historial.`
+        : "Cruce terminado: no hay coincidencias claras con el historial de visitas."
     );
   }
 
@@ -2170,6 +2209,7 @@ export default function App() {
                     Eliminar lista
                   </button>
                 </div>
+                {leadImportMessage && <p className="small targetListMessage">{leadImportMessage}</p>}
                 <input
                   ref={leadImportInputRef}
                   type="file"
@@ -2179,7 +2219,6 @@ export default function App() {
                 />
 
                 <p className="small">Columnas: Negocio, Categoría, Dirección, Localidad, Código postal, Teléfono y Google Maps.</p>
-                {leadImportMessage && <p className="small targetListMessage">{leadImportMessage}</p>}
 
                 <input
                   className="leadSearchInput"
