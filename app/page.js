@@ -589,6 +589,49 @@ function mapDirectionsUrl(record) {
   return query ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}` : mapSearchUrl(record);
 }
 
+function validCoordinates(latitude, longitude) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+    ? { latitude: lat, longitude: lng }
+    : null;
+}
+
+function leadCoordinates(lead) {
+  const savedCoordinates = validCoordinates(lead?.latitude, lead?.longitude);
+  if (savedCoordinates) return savedCoordinates;
+
+  const mapUrl = String(lead?.googleMaps || "");
+  const dataCoordinates = mapUrl.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+  const atCoordinates = mapUrl.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  const queryCoordinates = mapUrl.match(/[?&](?:q|query|ll)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i);
+  const coordinates = dataCoordinates || atCoordinates || queryCoordinates;
+
+  return coordinates ? validCoordinates(coordinates[1], coordinates[2]) : null;
+}
+
+function distanceInKilometers(first, second) {
+  const toRadians = degrees => (degrees * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const deltaLatitude = toRadians(second.latitude - first.latitude);
+  const deltaLongitude = toRadians(second.longitude - first.longitude);
+  const latitudeFactor = Math.sin(deltaLatitude / 2) ** 2 +
+    Math.cos(toRadians(first.latitude)) * Math.cos(toRadians(second.latitude)) * Math.sin(deltaLongitude / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(latitudeFactor), Math.sqrt(1 - latitudeFactor));
+}
+
+function savedLeadDistance(lead) {
+  const distance = Number(lead?.distanceKm);
+  return Number.isFinite(distance) && distance >= 0 ? distance : null;
+}
+
+function formatLeadDistance(distance) {
+  if (distance === null) return "";
+  if (distance < 1) return `${Math.round(distance * 1000)} m`;
+  return `${distance.toLocaleString("es-ES", { maximumFractionDigits: 1 })} km`;
+}
+
 function makeCalendarDays(monthDate) {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -644,6 +687,8 @@ export default function App() {
   const [leadImportMessage, setLeadImportMessage] = useState("");
   const [leadSearchTerm, setLeadSearchTerm] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
+  const [leadDistanceSort, setLeadDistanceSort] = useState("default");
+  const [leadDistanceStatus, setLeadDistanceStatus] = useState("");
   const [pendingLeadMatch, setPendingLeadMatch] = useState(null);
   const [openLeadVisits, setOpenLeadVisits] = useState(null);
 
@@ -886,20 +931,35 @@ export default function App() {
   const selectedClosed = closedByDay[selectedDate];
   const activeTargetList = targetLists.find(list => String(list.id) === String(openTargetListId)) || null;
   const visibleTargetLeads = activeTargetList
-    ? activeTargetList.leads.filter(lead => {
-        const status = lead.status || LEAD_STATUS.pending;
-        const term = normalizeSearchText(leadSearchTerm);
-        const matchesStatus = leadStatusFilter === "all" || status === leadStatusFilter;
-        const matchesSearch = !term || [
-          lead.businessName,
-          lead.category,
-          lead.address,
-          lead.locality,
-          lead.postalCode,
-          lead.phone,
-        ].some(value => normalizeSearchText(value).includes(term));
-        return matchesStatus && matchesSearch;
-      })
+    ? (() => {
+        const filteredLeads = activeTargetList.leads.filter(lead => {
+          const status = lead.status || LEAD_STATUS.pending;
+          const term = normalizeSearchText(leadSearchTerm);
+          const matchesStatus = leadStatusFilter === "all" || status === leadStatusFilter;
+          const matchesSearch = !term || [
+            lead.businessName,
+            lead.category,
+            lead.address,
+            lead.locality,
+            lead.postalCode,
+            lead.phone,
+          ].some(value => normalizeSearchText(value).includes(term));
+          return matchesStatus && matchesSearch;
+        });
+
+        if (leadDistanceSort !== "distance") return filteredLeads;
+
+        return [...filteredLeads].sort((first, second) => {
+          const firstDistance = savedLeadDistance(first);
+          const secondDistance = savedLeadDistance(second);
+          if (firstDistance === null && secondDistance === null) {
+            return String(first.businessName).localeCompare(String(second.businessName), "es");
+          }
+          if (firstDistance === null) return 1;
+          if (secondDistance === null) return -1;
+          return firstDistance - secondDistance;
+        });
+      })()
     : [];
 
   const searchResults = useMemo(() => {
@@ -993,6 +1053,8 @@ export default function App() {
     setLeadImportMessage("");
     setLeadSearchTerm("");
     setLeadStatusFilter("all");
+    setLeadDistanceSort("default");
+    setLeadDistanceStatus("");
   }
 
   function createTargetList(e) {
@@ -1148,6 +1210,72 @@ export default function App() {
       matchedLeads
         ? `Cruce terminado: ${matchedLeads} ${matchedLeads === 1 ? "lead marcado como visitado" : "leads marcados como visitados"} por el historial.`
         : "Cruce terminado: no hay coincidencias claras con el historial de visitas."
+    );
+  }
+
+  function updateLeadDistances(list) {
+    if (!navigator.geolocation) {
+      setLeadDistanceStatus("Este dispositivo no permite obtener la ubicación actual.");
+      return;
+    }
+
+    setLeadDistanceStatus("Obteniendo tu ubicación y calculando distancias...");
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const currentLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        const now = new Date().toISOString();
+        let calculated = 0;
+        let withoutCoordinates = 0;
+
+        const updatedTargetLists = targetLists.map(currentList => {
+          if (String(currentList.id) !== String(list.id)) return currentList;
+
+          return {
+            ...currentList,
+            leads: currentList.leads.map(lead => {
+              const coordinates = leadCoordinates(lead);
+              if (!coordinates) {
+                withoutCoordinates += 1;
+                return lead;
+              }
+
+              calculated += 1;
+              return {
+                ...lead,
+                latitude: coordinates.latitude,
+                longitude: coordinates.longitude,
+                distanceKm: Math.round(distanceInKilometers(currentLocation, coordinates) * 100) / 100,
+                distanceUpdatedAt: now,
+              };
+            }),
+          };
+        });
+
+        setTargetLists(updatedTargetLists);
+        persist(visits, closedDays, reminders, updatedTargetLists);
+        setLeadDistanceSort(calculated ? "distance" : "default");
+        setLeadDistanceStatus(
+          calculated
+            ? `Distancias actualizadas para ${calculated} ${calculated === 1 ? "negocio" : "negocios"}${withoutCoordinates ? ` · ${withoutCoordinates} sin coordenadas` : ""}.`
+            : "No se han encontrado coordenadas en los enlaces de Maps de esta lista."
+        );
+      },
+      error => {
+        const messages = {
+          1: "No se ha permitido acceder a tu ubicación.",
+          2: "No se ha podido determinar tu ubicación.",
+          3: "Se ha agotado el tiempo para obtener tu ubicación.",
+        };
+        setLeadDistanceStatus(messages[error.code] || "No se ha podido obtener tu ubicación.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
     );
   }
 
@@ -2205,11 +2333,15 @@ export default function App() {
                   <button type="button" className="secondaryBtn" onClick={() => reconcileTargetListWithVisitHistory(activeTargetList)}>
                     Cruzar con historial
                   </button>
+                  <button type="button" className="secondaryBtn" onClick={() => updateLeadDistances(activeTargetList)}>
+                    📍 Actualizar distancias
+                  </button>
                   <button type="button" className="deleteBtn compactDeleteBtn" onClick={() => deleteTargetList(activeTargetList)}>
                     Eliminar lista
                   </button>
                 </div>
                 {leadImportMessage && <p className="small targetListMessage">{leadImportMessage}</p>}
+                {leadDistanceStatus && <p className="small leadDistanceMessage">{leadDistanceStatus}</p>}
                 <input
                   ref={leadImportInputRef}
                   type="file"
@@ -2231,6 +2363,13 @@ export default function App() {
                   <button type="button" className={leadStatusFilter === LEAD_STATUS.pending ? "active" : ""} onClick={() => setLeadStatusFilter(LEAD_STATUS.pending)}>Pendientes</button>
                   <button type="button" className={leadStatusFilter === LEAD_STATUS.visited ? "active" : ""} onClick={() => setLeadStatusFilter(LEAD_STATUS.visited)}>Visitados</button>
                 </div>
+                <label className="leadDistanceSort">
+                  Ordenar por
+                  <select value={leadDistanceSort} onChange={e => setLeadDistanceSort(e.target.value)}>
+                    <option value="default">Orden original</option>
+                    <option value="distance">Distancia: más cercanos primero</option>
+                  </select>
+                </label>
 
                 <div className="targetLeadList">
                   {visibleTargetLeads.length === 0 && (
@@ -2256,6 +2395,9 @@ export default function App() {
 
                         <p>{[lead.address, lead.postalCode, lead.locality].filter(Boolean).join(" · ") || "Sin dirección"}</p>
                         {lead.phone && <p>Tel. {lead.phone}</p>}
+                        {savedLeadDistance(lead) !== null && (
+                          <p className="leadDistance">📍 A {formatLeadDistance(savedLeadDistance(lead))} de tu última ubicación</p>
+                        )}
 
                         <div className="mapActions">
                           {mapSearchUrl(lead) && <a href={mapSearchUrl(lead)} target="_blank" rel="noreferrer">Abrir en Maps</a>}

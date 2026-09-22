@@ -972,6 +972,11 @@ textarea {
   color: #fbbf24;
 }
 
+.leadDistanceMessage {
+  margin: 8px 0 14px;
+  color: #67e8f9;
+}
+
 .targetListCards,
 .targetLeadList,
 .leadMatchList {
@@ -1039,6 +1044,20 @@ textarea {
   margin-bottom: 14px;
 }
 
+.leadDistanceSort {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: #cbd5e1;
+}
+
+.leadDistanceSort select {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+
 .targetLeadCard {
   border: 1px solid #374151;
   border-radius: 14px;
@@ -1068,6 +1087,11 @@ textarea {
 
 .targetLeadCard p {
   margin: 8px 0;
+}
+
+.targetLeadCard .leadDistance {
+  color: #67e8f9;
+  font-weight: 700;
 }
 
 .leadStatus {
@@ -1158,6 +1182,7 @@ textarea {
 
   .targetListCreate .mainBtn,
   .targetListTools .mainBtn,
+  .targetListTools .secondaryBtn,
   .compactDeleteBtn,
   .backToListsBtn {
     width: 100%;
