@@ -2,6 +2,7 @@
 import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { readSheet } from "read-excel-file/browser";
+import { getSupabaseClient } from "../lib/supabase";
 
 const STORAGE_KEY = "visitas_app_pro_v4";
 const OLD_KEYS = ["visitas_app_pro_v3", "visitas_app_pro_v2"];
@@ -656,13 +657,22 @@ function makeCalendarDays(monthDate) {
   return days;
 }
 
+function createLocalId(prefix = "") {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return prefix ? `${prefix}-${id}` : id;
+}
+
 export default function App() {
   const today = new Date();
   const todayKey = dateKey(today);
+  const supabase = getSupabaseClient();
   const importInputRef = useRef(null);
   const leadImportInputRef = useRef(null);
   const calendarRef = useRef(null);
   const summaryRef = useRef(null);
+  const cloudSaveTimerRef = useRef(null);
+  const cloudUserRef = useRef(null);
+  const cloudSyncEnabledRef = useRef(false);
 
   const [visits, setVisits] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
@@ -681,6 +691,12 @@ export default function App() {
   const [openClosedDay, setOpenClosedDay] = useState(null);
   const [locationStatus, setLocationStatus] = useState("");
   const [backupStatus, setBackupStatus] = useState("");
+  const [showCloudAccount, setShowCloudAccount] = useState(false);
+  const [cloudUser, setCloudUser] = useState(null);
+  const [cloudEmail, setCloudEmail] = useState("");
+  const [cloudStatus, setCloudStatus] = useState("");
+  const [cloudHasData, setCloudHasData] = useState(false);
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState(false);
   const [showTargetLists, setShowTargetLists] = useState(false);
   const [openTargetListId, setOpenTargetListId] = useState(null);
   const [newTargetListName, setNewTargetListName] = useState("");
@@ -708,8 +724,10 @@ export default function App() {
     reason: "",
   });
 
-  const activeModalKey = pendingLeadMatch
-    ? "lead-match"
+  const activeModalKey = showCloudAccount
+    ? "cloud-account"
+    : pendingLeadMatch
+      ? "lead-match"
     : openLeadVisits
       ? "lead-visits"
     : pendingVisitSave
@@ -823,6 +841,67 @@ export default function App() {
       document.removeEventListener("visibilitychange", refreshVisibleData);
     };
   }, []);
+
+  useEffect(() => {
+    cloudSyncEnabledRef.current = cloudSyncEnabled;
+  }, [cloudSyncEnabled]);
+
+  useEffect(() => {
+    if (!supabase) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function inspectCloudAccount(user) {
+      if (!user) {
+        cloudUserRef.current = null;
+        setCloudUser(null);
+        setCloudHasData(false);
+        cloudSyncEnabledRef.current = false;
+        setCloudSyncEnabled(false);
+        setCloudStatus("Inicia sesión para activar el guardado online.");
+        return;
+      }
+
+      cloudUserRef.current = user;
+      setCloudUser(user);
+      setCloudStatus("Comprobando tu copia online...");
+
+      const { data, error } = await supabase
+        .from("app_sync_state")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) {
+        setCloudStatus("No se ha podido comprobar la copia online.");
+        return;
+      }
+
+      setCloudHasData(Boolean(data));
+      setCloudStatus(
+        data
+          ? "Hay una copia online disponible. Elige cargarla o subir los datos locales."
+          : "Cuenta lista. Sube tus datos locales para crear la primera copia online."
+      );
+    }
+
+    supabase.auth.getSession()
+      .then(({ data }) => inspectCloudAccount(data.session?.user || null))
+      .catch(() => setCloudStatus("No se ha podido iniciar la conexión con Supabase."));
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => inspectCloudAccount(session?.user || null), 0);
+    });
+
+    return () => {
+      cancelled = true;
+      listener.subscription.unsubscribe();
+      if (cloudSaveTimerRef.current) window.clearTimeout(cloudSaveTimerRef.current);
+    };
+  }, [supabase]);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
@@ -1034,18 +1113,137 @@ export default function App() {
       });
   })();
 
+  async function saveSnapshotToCloud(snapshot, activateSync = false) {
+    const user = cloudUserRef.current;
+    if (!supabase || !user) return false;
+
+    setCloudStatus("Guardando una copia online...");
+    const { error } = await supabase
+      .from("app_sync_state")
+      .upsert(
+        {
+          user_id: user.id,
+          payload: normalizeData(snapshot),
+          data_version: 1,
+        },
+        { onConflict: "user_id" }
+      );
+
+    if (error) {
+      setCloudStatus("No se ha podido guardar en la nube. Tus datos siguen seguros en este dispositivo.");
+      return false;
+    }
+
+    if (activateSync) {
+      cloudSyncEnabledRef.current = true;
+      setCloudSyncEnabled(true);
+    }
+    setCloudHasData(true);
+    setCloudStatus("Copia online actualizada.");
+    return true;
+  }
+
+  function queueCloudSave(snapshot) {
+    if (!supabase || !cloudUserRef.current || !cloudSyncEnabledRef.current) return;
+
+    if (cloudSaveTimerRef.current) window.clearTimeout(cloudSaveTimerRef.current);
+    setCloudStatus("Cambios guardados en este dispositivo. Sincronizando...");
+    cloudSaveTimerRef.current = window.setTimeout(() => {
+      saveSnapshotToCloud(snapshot);
+    }, 900);
+  }
+
+  async function uploadLocalDataToCloud() {
+    if (!cloudUser) return;
+    if (
+      cloudHasData &&
+      !cloudSyncEnabled &&
+      !window.confirm("Ya existe una copia online. ¿Quieres sustituirla por los datos de este dispositivo?")
+    ) {
+      return;
+    }
+
+    await saveSnapshotToCloud({ visits, closedDays, reminders, targetLists }, true);
+  }
+
+  async function loadCloudData() {
+    if (!supabase || !cloudUser) return;
+
+    setCloudStatus("Cargando la copia online...");
+    const { data, error } = await supabase
+      .from("app_sync_state")
+      .select("payload")
+      .eq("user_id", cloudUser.id)
+      .maybeSingle();
+
+    if (error || !data?.payload) {
+      setCloudStatus("No se ha podido cargar la copia online.");
+      return;
+    }
+
+    try {
+      const cloudData = validateImportedData(data.payload);
+      setVisits(cloudData.visits);
+      setClosedDays(cloudData.closedDays);
+      setReminders(cloudData.reminders);
+      setTargetLists(cloudData.targetLists);
+      saveData(cloudData);
+      cloudSyncEnabledRef.current = true;
+      setCloudSyncEnabled(true);
+      setCloudStatus("Copia online cargada. Los próximos cambios se sincronizarán automáticamente.");
+    } catch {
+      setCloudStatus("La copia online no tiene un formato válido.");
+    }
+  }
+
+  async function requestCloudAccess(e) {
+    e.preventDefault();
+    if (!supabase || !cloudEmail.trim()) return;
+
+    setCloudStatus("Enviando el enlace de acceso...");
+    const { error } = await supabase.auth.signInWithOtp({
+      email: cloudEmail.trim(),
+      options: { emailRedirectTo: window.location.origin },
+    });
+
+    setCloudStatus(
+      error
+        ? "No se ha podido enviar el enlace. Revisa el email e inténtalo de nuevo."
+        : "Te hemos enviado un enlace de acceso. Ábrelo desde el correo para activar tu cuenta."
+    );
+  }
+
+  async function signOutOfCloud() {
+    if (!supabase) return;
+
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      setCloudStatus("No se ha podido cerrar la sesión online.");
+      return;
+    }
+
+    cloudUserRef.current = null;
+    cloudSyncEnabledRef.current = false;
+    setCloudUser(null);
+    setCloudHasData(false);
+    setCloudSyncEnabled(false);
+    setCloudStatus("Sesión cerrada. Tus datos locales permanecen en este dispositivo.");
+  }
+
   function persist(
     updatedVisits,
     updatedClosedDays,
     updatedReminders = reminders,
     updatedTargetLists = targetLists
   ) {
-    saveData({
+    const snapshot = normalizeData({
       visits: updatedVisits,
       closedDays: updatedClosedDays,
       reminders: updatedReminders,
       targetLists: updatedTargetLists,
     });
+    saveData(snapshot);
+    queueCloudSave(snapshot);
   }
 
   function openTargetList(listId) {
@@ -1069,7 +1267,7 @@ export default function App() {
     }
 
     const newList = {
-      id: `target-list-${Date.now()}`,
+      id: createLocalId("target-list"),
       name,
       createdAt: new Date().toISOString(),
       leads: [],
@@ -1692,7 +1890,7 @@ export default function App() {
     }
 
     const newVisit = {
-      id: Date.now(),
+      id: createLocalId(),
       date: selectedDate,
       createdAt: now,
       ...form,
@@ -1734,7 +1932,7 @@ export default function App() {
     e.preventDefault();
 
     const newClosed = {
-      id: Date.now(),
+      id: createLocalId(),
       date: selectedDate,
       ...closeForm,
     };
@@ -1957,7 +2155,12 @@ export default function App() {
         setClosedDays(importedData.closedDays);
         setReminders(importedData.reminders);
         setTargetLists(importedData.targetLists);
-        saveData(importedData);
+        persist(
+          importedData.visits,
+          importedData.closedDays,
+          importedData.reminders,
+          importedData.targetLists
+        );
         setBackupStatus("Backup importado correctamente.");
       } catch {
         setBackupStatus("No se pudo importar el archivo. Revisa que sea un backup válido.");
@@ -2102,6 +2305,10 @@ export default function App() {
             }}
           >
             Listas de clientes objetivos{targetLists.length ? ` (${targetLists.length})` : ""}
+          </button>
+
+          <button className="secondaryBtn" onClick={() => setShowCloudAccount(true)}>
+            {cloudUser && cloudSyncEnabled ? "☁ Nube sincronizada" : "☁ Cuenta y nube"}
           </button>
 
           <button className="secondaryBtn" onClick={exportCSV} disabled={selectedVisits.length === 0}>
@@ -2270,6 +2477,58 @@ export default function App() {
   {editingVisitId ? "Guardar cambios" : "Guardar visita"}
 </button>
           </form>
+        </div>
+      )}
+
+      {showCloudAccount && (
+        <div className="modal">
+          <div className="box cloudBox">
+            <div className="modalHead">
+              <h2>Cuenta y guardado online</h2>
+              <button type="button" onClick={() => setShowCloudAccount(false)}>×</button>
+            </div>
+
+            {!supabase ? (
+              <p className="small">
+                Falta conectar las variables de Supabase en Vercel. Tus datos siguen guardándose solo en este dispositivo.
+              </p>
+            ) : !cloudUser ? (
+              <form className="cloudAccessForm" onSubmit={requestCloudAccess}>
+                <p className="small">Accede con tu email para tener una copia privada y sincronizada de tu agenda.</p>
+                <label>Email</label>
+                <input
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="tu@email.com"
+                  value={cloudEmail}
+                  onChange={e => setCloudEmail(e.target.value)}
+                />
+                <button type="submit" className="mainBtn">Enviar enlace de acceso</button>
+              </form>
+            ) : (
+              <div className="cloudAccountActions">
+                <p className="small">Conectado como {cloudUser.email || "tu cuenta"}.</p>
+                {cloudHasData && !cloudSyncEnabled && (
+                  <button type="button" className="mainBtn" onClick={loadCloudData}>
+                    Cargar copia online
+                  </button>
+                )}
+                <button type="button" className="mainBtn" onClick={uploadLocalDataToCloud}>
+                  {cloudSyncEnabled ? "Guardar copia ahora" : "Subir datos de este dispositivo"}
+                </button>
+                <button type="button" className="secondaryBtn" onClick={signOutOfCloud}>
+                  Cerrar sesión online
+                </button>
+              </div>
+            )}
+
+            <p className="small cloudStatus">
+              {supabase
+                ? cloudStatus
+                : "La nube se activará al configurar Supabase en Vercel."}
+            </p>
+          </div>
         </div>
       )}
 

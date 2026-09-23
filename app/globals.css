@@ -972,6 +972,22 @@ textarea {
   color: #fbbf24;
 }
 
+.cloudBox {
+  max-width: 560px;
+}
+
+.cloudAccessForm,
+.cloudAccountActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cloudStatus {
+  margin: 16px 0 0;
+  color: #67e8f9;
+}
+
 .leadDistanceMessage {
   margin: 8px 0 14px;
   color: #67e8f9;
