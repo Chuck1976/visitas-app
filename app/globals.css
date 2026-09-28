@@ -974,6 +974,7 @@ textarea {
 
 .cloudBox {
   max-width: 560px;
+  overflow-wrap: anywhere;
 }
 
 .cloudAccessForm,

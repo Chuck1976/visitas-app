@@ -694,6 +694,11 @@ export default function App() {
   const [showCloudAccount, setShowCloudAccount] = useState(false);
   const [cloudUser, setCloudUser] = useState(null);
   const [cloudEmail, setCloudEmail] = useState("");
+  const [cloudPassword, setCloudPassword] = useState("");
+  const [cloudPasswordConfirm, setCloudPasswordConfirm] = useState("");
+  const [cloudAccessMode, setCloudAccessMode] = useState("password");
+  const [cloudAuthBusy, setCloudAuthBusy] = useState(false);
+  const [cloudAuthMessage, setCloudAuthMessage] = useState("");
   const [cloudStatus, setCloudStatus] = useState("");
   const [cloudHasData, setCloudHasData] = useState(false);
   const [cloudSyncEnabled, setCloudSyncEnabled] = useState(false);
@@ -1198,19 +1203,56 @@ export default function App() {
 
   async function requestCloudAccess(e) {
     e.preventDefault();
-    if (!supabase || !cloudEmail.trim()) return;
+    if (!supabase || !cloudEmail.trim() || cloudAuthBusy) return;
+    setCloudAuthBusy(true);
+    setCloudAuthMessage("");
+    try {
+      const { error } = cloudAccessMode === "password"
+        ? await supabase.auth.signInWithPassword({ email: cloudEmail.trim(), password: cloudPassword })
+        : await supabase.auth.signInWithOtp({
+            email: cloudEmail.trim(),
+            options: { emailRedirectTo: window.location.origin },
+          });
+      if (error) {
+        setCloudAuthMessage(cloudAccessMode === "password"
+          ? "No se ha podido entrar. Revisa el email y la contraseña, o solicita un enlace de acceso."
+          : "No se ha podido enviar el enlace. Revisa el email e inténtalo más tarde.");
+      } else {
+        setCloudPassword("");
+        setCloudAuthMessage(cloudAccessMode === "password"
+          ? "Sesión iniciada."
+          : "Revisa tu correo. Tras abrir el enlace, entra en Cuenta y nube para crear o cambiar tu contraseña.");
+      }
+    } catch {
+      setCloudAuthMessage("No se ha podido conectar. Comprueba tu conexión e inténtalo de nuevo.");
+    } finally {
+      setCloudAuthBusy(false);
+    }
+  }
 
-    setCloudStatus("Enviando el enlace de acceso...");
-    const { error } = await supabase.auth.signInWithOtp({
-      email: cloudEmail.trim(),
-      options: { emailRedirectTo: window.location.origin },
-    });
-
-    setCloudStatus(
-      error
-        ? "No se ha podido enviar el enlace. Revisa el email e inténtalo de nuevo."
-        : "Te hemos enviado un enlace de acceso. Ábrelo desde el correo para activar tu cuenta."
-    );
+  async function saveCloudPassword(e) {
+    e.preventDefault();
+    if (!supabase || !cloudUser || cloudAuthBusy) return;
+    if (cloudPassword.length < 8 || cloudPassword !== cloudPasswordConfirm) {
+      setCloudAuthMessage("Usa al menos 8 caracteres y escribe la misma contraseña en ambos campos.");
+      return;
+    }
+    setCloudAuthBusy(true);
+    setCloudAuthMessage("");
+    try {
+      const { error } = await supabase.auth.updateUser({ password: cloudPassword });
+      if (error) {
+        setCloudAuthMessage("No se ha podido guardar la contraseña. Usa otra más segura o vuelve a entrar mediante un enlace de correo e inténtalo de nuevo.");
+      } else {
+        setCloudPassword("");
+        setCloudPasswordConfirm("");
+        setCloudAuthMessage("Contraseña guardada. Ya puedes entrar con tu email y contraseña.");
+      }
+    } catch {
+      setCloudAuthMessage("No se ha podido conectar. Inténtalo de nuevo.");
+    } finally {
+      setCloudAuthBusy(false);
+    }
   }
 
   async function signOutOfCloud() {
@@ -1225,6 +1267,9 @@ export default function App() {
     cloudUserRef.current = null;
     cloudSyncEnabledRef.current = false;
     setCloudUser(null);
+    setCloudPassword("");
+    setCloudPasswordConfirm("");
+    setCloudAuthMessage("");
     setCloudHasData(false);
     setCloudSyncEnabled(false);
     setCloudStatus("Sesión cerrada. Tus datos locales permanecen en este dispositivo.");
@@ -2494,9 +2539,10 @@ export default function App() {
               </p>
             ) : !cloudUser ? (
               <form className="cloudAccessForm" onSubmit={requestCloudAccess}>
-                <p className="small">Accede con tu email para tener una copia privada y sincronizada de tu agenda.</p>
-                <label>Email</label>
+                <p className="small">{cloudAccessMode === "password" ? "Entra con tu email y contraseña." : "Crea tu cuenta o recupera el acceso con un enlace de correo. Después podrás establecer una contraseña."}</p>
+                <label htmlFor="cloud-email">Email</label>
                 <input
+                  id="cloud-email"
                   type="email"
                   required
                   autoComplete="email"
@@ -2504,7 +2550,23 @@ export default function App() {
                   value={cloudEmail}
                   onChange={e => setCloudEmail(e.target.value)}
                 />
-                <button type="submit" className="mainBtn">Enviar enlace de acceso</button>
+                {cloudAccessMode === "password" && (
+                  <>
+                    <label htmlFor="cloud-password">Contraseña</label>
+                    <input id="cloud-password" type="password" required autoComplete="current-password"
+                      value={cloudPassword} onChange={e => setCloudPassword(e.target.value)} />
+                  </>
+                )}
+                <button type="submit" className="mainBtn" disabled={cloudAuthBusy}>
+                  {cloudAuthBusy ? "Conectando..." : cloudAccessMode === "password" ? "Entrar" : "Enviar enlace de acceso"}
+                </button>
+                <button type="button" className="secondaryBtn" disabled={cloudAuthBusy} onClick={() => {
+                  setCloudAccessMode(cloudAccessMode === "password" ? "link" : "password");
+                  setCloudPassword("");
+                  setCloudAuthMessage("");
+                }}>
+                  {cloudAccessMode === "password" ? "Crear cuenta / He olvidado mi contraseña" : "Entrar con contraseña"}
+                </button>
               </form>
             ) : (
               <div className="cloudAccountActions">
@@ -2517,12 +2579,25 @@ export default function App() {
                 <button type="button" className="mainBtn" onClick={uploadLocalDataToCloud}>
                   {cloudSyncEnabled ? "Guardar copia ahora" : "Subir datos de este dispositivo"}
                 </button>
-                <button type="button" className="secondaryBtn" onClick={signOutOfCloud}>
+                <form className="cloudAccessForm" onSubmit={saveCloudPassword}>
+                  <p className="small">Crea o cambia tu contraseña para entrar sin esperar un correo.</p>
+                  <label htmlFor="cloud-new-password">Nueva contraseña</label>
+                  <input id="cloud-new-password" type="password" required minLength={8} autoComplete="new-password"
+                    placeholder="Al menos 8 caracteres" value={cloudPassword} onChange={e => setCloudPassword(e.target.value)} />
+                  <label htmlFor="cloud-confirm-password">Repetir contraseña</label>
+                  <input id="cloud-confirm-password" type="password" required minLength={8} autoComplete="new-password"
+                    value={cloudPasswordConfirm} onChange={e => setCloudPasswordConfirm(e.target.value)} />
+                  <button type="submit" className="secondaryBtn" disabled={cloudAuthBusy}>
+                    {cloudAuthBusy ? "Guardando..." : "Guardar contraseña"}
+                  </button>
+                </form>
+                <button type="button" className="secondaryBtn" disabled={cloudAuthBusy} onClick={signOutOfCloud}>
                   Cerrar sesión online
                 </button>
               </div>
             )}
 
+            {cloudAuthMessage && <p className="small cloudStatus" role="status">{cloudAuthMessage}</p>}
             <p className="small cloudStatus">
               {supabase
                 ? cloudStatus
