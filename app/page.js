@@ -3,6 +3,7 @@ import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { readSheet } from "read-excel-file/browser";
 import { getSupabaseClient } from "../lib/supabase";
+import { buildVisitSheet, isExportDate, visitSheetOptions, visitsInRange } from "../lib/visit-export.mjs";
 
 const STORAGE_KEY = "visitas_app_pro_v4";
 const OLD_KEYS = ["visitas_app_pro_v3", "visitas_app_pro_v2"];
@@ -684,6 +685,13 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [showCloseForm, setShowCloseForm] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [exportFrom, setExportFrom] = useState(todayKey);
+  const [exportTo, setExportTo] = useState(todayKey);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
+  const exportDatesValid = isExportDate(exportFrom) && isExportDate(exportTo) && exportFrom <= exportTo;
+  const exportVisits = useMemo(() => visitsInRange(visits, exportFrom, exportTo), [visits, exportFrom, exportTo]);
   const [openVisit, setOpenVisit] = useState(null);
   const [openBusiness, setOpenBusiness] = useState(null);
   const [editingVisitId, setEditingVisitId] = useState(null);
@@ -731,6 +739,8 @@ export default function App() {
 
   const activeModalKey = showCloudAccount
     ? "cloud-account"
+    : showExport
+      ? "export-visits"
     : pendingLeadMatch
       ? "lead-match"
     : openLeadVisits
@@ -2128,6 +2138,24 @@ export default function App() {
     setOpenClosedDay(null);
   }
 
+  async function exportExcel(event) {
+    event.preventDefault();
+    if (exportBusy || !exportDatesValid || exportVisits.length === 0) return;
+    setExportBusy(true);
+    setExportMessage("");
+    try {
+      const { default: writeExcelFile } = await import("write-excel-file/browser");
+      await writeExcelFile(buildVisitSheet(exportVisits, reminders, labelValue), visitSheetOptions)
+        .toFile(`visitas-${exportFrom}-a-${exportTo}.xlsx`);
+      setExportMessage(`Excel generado con ${exportVisits.length} visitas en una sola hoja.`);
+    } catch (error) {
+      console.error("No se pudo exportar el Excel", error);
+      setExportMessage("No se pudo generar el Excel. Vuelve a intentarlo.");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   function exportCSV() {
     const rows = [
       ["Fecha", "Negocio", "Referente", "Localidad", "Barrio/Zona", "Código postal", "Dirección", "Tipo visita", "Valor", "Notas", "Latitud", "Longitud", "Precisión metros"],
@@ -2356,8 +2384,17 @@ export default function App() {
             {cloudUser && cloudSyncEnabled ? "☁ Nube sincronizada" : "☁ Cuenta y nube"}
           </button>
 
+          <button className="secondaryBtn" onClick={() => {
+            setExportFrom(selectedDate);
+            setExportTo(selectedDate);
+            setExportMessage("");
+            setShowExport(true);
+          }}>
+            Exportar visitas a Excel
+          </button>
+
           <button className="secondaryBtn" onClick={exportCSV} disabled={selectedVisits.length === 0}>
-            Exportar día a Excel/CSV
+            Exportar día a CSV
           </button>
 
           <button className="secondaryBtn" onClick={exportAllBackup}>
@@ -2437,6 +2474,34 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {showExport && (
+        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="export-title">
+          <form className="box" onSubmit={exportExcel}>
+            <div className="modalHead">
+              <h2 id="export-title">Exportar visitas a Excel</h2>
+              <button type="button" aria-label="Cerrar exportación" disabled={exportBusy} onClick={() => setShowExport(false)}>×</button>
+            </div>
+            <p className="small">Una sola hoja, de la visita más antigua a la más reciente. Se incluyen ambos días del intervalo.</p>
+            <label htmlFor="export-from">Desde</label>
+            <input id="export-from" type="date" required value={exportFrom} disabled={exportBusy}
+              onChange={event => { setExportFrom(event.target.value); setExportMessage(""); }} />
+            <label htmlFor="export-to">Hasta</label>
+            <input id="export-to" type="date" required value={exportTo} disabled={exportBusy}
+              onChange={event => { setExportTo(event.target.value); setExportMessage(""); }} />
+            <p className="small" role="status">
+              {!exportDatesValid ? "Elige dos fechas válidas: Desde debe ser anterior o igual a Hasta."
+                : exportVisits.length === 0 ? "No hay visitas en este intervalo."
+                  : `${exportVisits.length} ${exportVisits.length === 1 ? "visita para exportar" : "visitas para exportar"}.`}
+            </p>
+            <p className="small">La fecha de visita aparece resaltada en la primera columna. La última muestra la fecha del recordatorio guardado, o queda vacía si no hay ninguno.</p>
+            <button className="mainBtn" type="submit" disabled={exportBusy || !exportDatesValid || exportVisits.length === 0}>
+              {exportBusy ? "Generando Excel…" : "Descargar Excel (.xlsx)"}
+            </button>
+            {exportMessage && <p className="small" role="status">{exportMessage}</p>}
+          </form>
+        </div>
+      )}
 
       {showForm && (
         <div className="modal">
