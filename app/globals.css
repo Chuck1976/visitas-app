@@ -566,6 +566,34 @@ button {
   border: 1px solid #374151;
 }
 
+.exportColumns {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #64748b;
+  border-radius: 12px;
+}
+
+.exportCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.exportCheckbox input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.exportColumnActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .modalHead {
   position: sticky;
   top: calc(0px - var(--box-padding));

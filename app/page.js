@@ -3,9 +3,11 @@ import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { readSheet } from "read-excel-file/browser";
 import { getSupabaseClient } from "../lib/supabase";
-import { buildVisitSheet, isExportDate, visitSheetOptions, visitsInRange } from "../lib/visit-export.mjs";
+import { buildVisitSheet, getVisitSheetOptions, isExportDate, selectedVisitColumns, visitExportColumns, visitsInRange } from "../lib/visit-export.mjs";
 
 const STORAGE_KEY = "visitas_app_pro_v4";
+const EXPORT_SETTINGS_KEY = "visitas_excel_columns_v1";
+const ALL_EXPORT_COLUMNS = visitExportColumns.map(column => column.id);
 const OLD_KEYS = ["visitas_app_pro_v3", "visitas_app_pro_v2"];
 
 const valores = [
@@ -690,6 +692,10 @@ export default function App() {
   const [exportTo, setExportTo] = useState(todayKey);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
+  const [exportFilters, setExportFilters] = useState(false);
+  const [exportColumns, setExportColumns] = useState(ALL_EXPORT_COLUMNS);
+  const [exportSettingsMessage, setExportSettingsMessage] = useState("");
+  const activeExportColumns = exportFilters ? exportColumns : ALL_EXPORT_COLUMNS;
   const exportDatesValid = isExportDate(exportFrom) && isExportDate(exportTo) && exportFrom <= exportTo;
   const exportVisits = useMemo(() => visitsInRange(visits, exportFrom, exportTo), [visits, exportFrom, exportTo]);
   const [openVisit, setOpenVisit] = useState(null);
@@ -2138,16 +2144,49 @@ export default function App() {
     setOpenClosedDay(null);
   }
 
+  function openExcelExport() {
+    setExportFrom(selectedDate);
+    setExportTo(selectedDate);
+    setExportMessage("");
+    setExportSettingsMessage("");
+    setExportFilters(false);
+    setExportColumns(ALL_EXPORT_COLUMNS);
+    try {
+      const saved = JSON.parse(localStorage.getItem(EXPORT_SETTINGS_KEY));
+      if (saved && typeof saved.enabled === "boolean" && Array.isArray(saved.columns)) {
+        const columns = selectedVisitColumns(saved.columns).map(column => column.id);
+        if (columns.length) {
+          setExportFilters(saved.enabled);
+          setExportColumns(columns);
+        }
+      }
+    } catch {
+      setExportSettingsMessage("No se pudo recuperar la configuración. Puedes elegir las columnas de nuevo.");
+    }
+    setShowExport(true);
+  }
+
+  function saveExcelSettings() {
+    try {
+      localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify({
+        enabled: exportFilters, columns: activeExportColumns,
+      }));
+      setExportSettingsMessage("Configuración guardada para las próximas exportaciones en este navegador.");
+    } catch {
+      setExportSettingsMessage("No se pudo guardar la configuración en este navegador. Puedes descargar el Excel con esta selección.");
+    }
+  }
+
   async function exportExcel(event) {
     event.preventDefault();
-    if (exportBusy || !exportDatesValid || exportVisits.length === 0) return;
+    if (exportBusy || !exportDatesValid || exportVisits.length === 0 || activeExportColumns.length === 0) return;
     setExportBusy(true);
     setExportMessage("");
     try {
       const { default: writeExcelFile } = await import("write-excel-file/browser");
-      await writeExcelFile(buildVisitSheet(exportVisits, reminders, labelValue), visitSheetOptions)
+      await writeExcelFile(buildVisitSheet(exportVisits, reminders, labelValue, activeExportColumns), getVisitSheetOptions(activeExportColumns))
         .toFile(`visitas-${exportFrom}-a-${exportTo}.xlsx`);
-      setExportMessage(`Excel generado con ${exportVisits.length} visitas en una sola hoja.`);
+      setExportMessage(`Excel generado con ${exportVisits.length} visitas y ${activeExportColumns.length} columnas en una sola hoja.`);
     } catch (error) {
       console.error("No se pudo exportar el Excel", error);
       setExportMessage("No se pudo generar el Excel. Vuelve a intentarlo.");
@@ -2384,12 +2423,7 @@ export default function App() {
             {cloudUser && cloudSyncEnabled ? "☁ Nube sincronizada" : "☁ Cuenta y nube"}
           </button>
 
-          <button className="secondaryBtn" onClick={() => {
-            setExportFrom(selectedDate);
-            setExportTo(selectedDate);
-            setExportMessage("");
-            setShowExport(true);
-          }}>
+          <button className="secondaryBtn" onClick={openExcelExport}>
             Exportar visitas a Excel
           </button>
 
@@ -2494,8 +2528,39 @@ export default function App() {
                 : exportVisits.length === 0 ? "No hay visitas en este intervalo."
                   : `${exportVisits.length} ${exportVisits.length === 1 ? "visita para exportar" : "visitas para exportar"}.`}
             </p>
-            <p className="small">La fecha de visita aparece resaltada en la primera columna. La última muestra la fecha del recordatorio guardado, o queda vacía si no hay ninguno.</p>
-            <button className="mainBtn" type="submit" disabled={exportBusy || !exportDatesValid || exportVisits.length === 0}>
+            <label className="exportCheckbox">
+              <input type="checkbox" checked={exportFilters} disabled={exportBusy}
+                onChange={event => { setExportFilters(event.target.checked); setExportSettingsMessage(""); setExportMessage(""); }} />
+              Activar filtros de columnas
+            </label>
+            {exportFilters && (
+              <fieldset className="exportColumns" disabled={exportBusy}>
+                <legend>Columnas que se incluirán en el Excel</legend>
+                <div className="exportColumnActions">
+                  <button type="button" className="secondaryBtn" onClick={() => { setExportColumns(ALL_EXPORT_COLUMNS); setExportSettingsMessage(""); setExportMessage(""); }}>Marcar todas</button>
+                  <button type="button" className="secondaryBtn" onClick={() => { setExportColumns([]); setExportSettingsMessage(""); setExportMessage(""); }}>Desmarcar todas</button>
+                </div>
+                {visitExportColumns.map(column => (
+                  <label className="exportCheckbox" key={column.id}>
+                    <input type="checkbox" checked={exportColumns.includes(column.id)}
+                      onChange={event => {
+                        setExportColumns(previous => event.target.checked ? [...previous, column.id] : previous.filter(id => id !== column.id));
+                        setExportSettingsMessage("");
+                        setExportMessage("");
+                      }} />
+                    {column.label}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            <p className="small">Se exportarán {activeExportColumns.length} de {ALL_EXPORT_COLUMNS.length} columnas. Los datos completos se conservan en la app.</p>
+            {activeExportColumns.length === 0 && <p role="alert">Selecciona al menos una columna para exportar.</p>}
+            <button className="secondaryBtn" type="button" disabled={exportBusy || activeExportColumns.length === 0} onClick={saveExcelSettings}>
+              Guardar configuración
+            </button>
+            <p className="small">La configuración se guarda en este navegador. Si no la guardas, los cambios solo se usarán en esta exportación.</p>
+            {exportSettingsMessage && <p className="small" role="status">{exportSettingsMessage}</p>}
+            <button className="mainBtn" type="submit" disabled={exportBusy || !exportDatesValid || exportVisits.length === 0 || activeExportColumns.length === 0}>
               {exportBusy ? "Generando Excel…" : "Descargar Excel (.xlsx)"}
             </button>
             {exportMessage && <p className="small" role="status">{exportMessage}</p>}
