@@ -1,3 +1,13 @@
+:root {
+  color-scheme: light;
+  --canvas: #f3f6f5;
+  --surface: #ffffff;
+  --ink: #18333d;
+  --muted: #58717e;
+  --line: #d8e3e4;
+  --petrol: #165b61;
+  --soft: #e6f0ef;
+}
 * {
   box-sizing: border-box;
 }
@@ -8,8 +18,8 @@ body {
   max-width: 100%;
   margin: 0;
   padding: 0;
-  background: #111827;
-  color: #f8fafc;
+  background: var(--surface);
+  color: var(--ink);
   font-family: Arial, Helvetica, sans-serif;
   -webkit-text-size-adjust: 100%;
   overflow-x: hidden;
@@ -26,13 +36,13 @@ html {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
-  background: #111827;
+  background: var(--surface);
   padding: 20px;
-  color: #f8fafc;
+  color: var(--ink);
 }
 
 .topbar {
-  background: #1f2937;
+  background: var(--surface);
   border-radius: 18px;
   padding: 18px;
   display: flex;
@@ -60,11 +70,11 @@ html {
 h1 {
   margin: 4px 0 0;
   text-transform: capitalize;
-  color: #f97316;
+  color: var(--petrol);
 }
 
 .small {
-  color: #cbd5e1;
+  color: var(--muted);
   font-size: 14px;
 }
 
@@ -78,9 +88,9 @@ button {
   touch-action: manipulation;
   border-radius: 12px;
   padding: 10px 14px;
-  background: #374151;
-  color: #f8fafc;
-  border: 1px solid #4b5563;
+  background: var(--line);
+  color: var(--ink);
+  border: 1px solid var(--line);
   font-size: 15px;
 }
 
@@ -99,7 +109,7 @@ button {
 .calendar {
   align-self: start;
   align-content: start;
-  background: #1f2937;
+  background: var(--surface);
   border-radius: 18px;
   padding: 12px;
   display: grid;
@@ -110,7 +120,7 @@ button {
 .weekday {
   text-align: center;
   font-weight: bold;
-  color: #f97316;
+  color: var(--petrol);
   padding: 4px;
   font-size: 13px;
 }
@@ -122,14 +132,14 @@ button {
   width: 100%;
   min-width: 0;
   text-align: left;
-  background: #111827;
-  border: 1px solid #374151;
+  background: var(--surface);
+  border: 1px solid var(--line);
   padding: 4px 5px 5px;
   overflow: hidden;
 }
 
 .day:hover {
-  background: #172033;
+  background: var(--soft);
 }
 
 .day.muted {
@@ -137,11 +147,11 @@ button {
 }
 
 .day.selected {
-  border: 2px solid #f97316;
+  border: 2px solid var(--petrol);
 }
 
 .day.closed {
-  background: #3b2f22;
+  background: #fff6e7;
 }
 
 .dayHead {
@@ -158,8 +168,8 @@ button {
 }
 
 .dayHead b {
-  background: #f97316;
-  color: #111827;
+  background: var(--petrol);
+  color: var(--ink);
   border-radius: 999px;
   padding: 1px 6px;
   font-size: 10px;
@@ -167,21 +177,21 @@ button {
 }
 
 .today {
-  background: #f97316;
-  color: #111827;
+  background: var(--petrol);
+  color: var(--ink);
   border-radius: 999px;
   padding: 2px 6px;
   font-weight: bold;
 }
 
 .holiday {
-  color: #fb923c;
+  color: var(--petrol);
   font-weight: bold;
 }
 
 .closedTag {
-  background: #f97316;
-  color: #111827;
+  background: var(--petrol);
+  color: var(--ink);
   font-size: 9px;
   padding: 2px 5px;
   border-radius: 5px;
@@ -207,7 +217,7 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #111827;
+  color: var(--ink);
   font-weight: 700;
   line-height: 1.1;
 }
@@ -219,14 +229,14 @@ button {
 
 .more {
   font-size: 9px;
-  color: #cbd5e1;
+  color: var(--muted);
   margin-top: 2px;
 }
 
 .side {
   align-self: start;
   min-width: 0;
-  background: #1f2937;
+  background: var(--surface);
   border-radius: 18px;
   padding: 18px;
   scroll-margin-top: 10px;
@@ -234,7 +244,7 @@ button {
 
 .side h2 {
   text-transform: capitalize;
-  color: #f97316;
+  color: var(--petrol);
 }
 
 .backToCalendarBtn {
@@ -243,8 +253,8 @@ button {
 
 .mainBtn {
   width: 100%;
-  background: #f97316;
-  color: #111827;
+  background: var(--petrol);
+  color: var(--ink);
   border: none;
   margin-bottom: 10px;
   font-weight: bold;
@@ -252,8 +262,8 @@ button {
 
 .orangeBtn {
   width: 100%;
-  background: #fb923c;
-  color: #111827;
+  background: var(--petrol);
+  color: var(--ink);
   border: none;
   margin-bottom: 10px;
   font-weight: bold;
@@ -286,9 +296,9 @@ button {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  border: 1px solid #374151;
-  background: #111827;
-  color: #f8fafc;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
   margin-bottom: 10px;
   padding: 10px 14px;
   border-radius: 12px;
@@ -296,23 +306,23 @@ button {
 
 .reminderCard {
   border-color: #a855f7;
-  background: #241638;
+  background: #faf5ff;
 }
 
 .closedCard {
-  border-color: #f97316;
-  background: #3b2f22;
+  border-color: var(--petrol);
+  background: #fff6e7;
 }
 
 .visitCard span,
 .closedCard span,
 .reminderCard span {
-  color: #cbd5e1;
+  color: var(--muted);
 }
 
 .visitCard small,
 .reminderCard small {
-  color: #fb923c;
+  color: var(--petrol);
 }
 
 .visitCard em,
@@ -374,14 +384,14 @@ button {
 }
 
 .searchTabs button {
-  background: #111827;
-  border-color: #374151;
+  background: var(--surface);
+  border-color: var(--line);
 }
 
 .searchTabs button.active {
-  background: #f97316;
-  color: #111827;
-  border-color: #f97316;
+  background: var(--petrol);
+  color: var(--ink);
+  border-color: var(--petrol);
   font-weight: bold;
 }
 
@@ -405,20 +415,20 @@ button {
   flex-direction: column;
   gap: 4px;
   text-align: left;
-  background: #111827;
-  border-color: #374151;
+  background: var(--surface);
+  border-color: var(--line);
 }
 
 .presetGrid button.active {
   background: #fff7ed;
-  color: #111827;
-  border-color: #f97316;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.24);
+  color: var(--ink);
+  border-color: var(--petrol);
+  box-shadow: 0 0 0 3px rgba(22, 91, 97, 0.24);
 }
 
 .presetGrid span {
   font-size: 13px;
-  color: #cbd5e1;
+  color: var(--muted);
 }
 
 .presetGrid button.active span {
@@ -436,7 +446,7 @@ button {
 .scheduleMonthHead strong {
   text-align: center;
   text-transform: capitalize;
-  color: #f97316;
+  color: var(--petrol);
   font-size: 18px;
 }
 
@@ -447,7 +457,7 @@ button {
 }
 
 .scheduleWeekday {
-  color: #fb923c;
+  color: var(--petrol);
   text-align: center;
   font-weight: bold;
   font-size: 13px;
@@ -457,8 +467,8 @@ button {
 .scheduleDay {
   min-height: 44px;
   padding: 8px 4px;
-  background: #111827;
-  border-color: #374151;
+  background: var(--surface);
+  border-color: var(--line);
 }
 
 .scheduleDay.muted {
@@ -466,9 +476,9 @@ button {
 }
 
 .scheduleDay.selected {
-  background: #f97316;
-  color: #111827;
-  border-color: #f97316;
+  background: var(--petrol);
+  color: var(--ink);
+  border-color: var(--petrol);
   font-weight: bold;
 }
 
@@ -479,7 +489,7 @@ button {
 
 .scheduleDateText {
   margin: 14px 0;
-  color: #f8fafc;
+  color: var(--ink);
   font-weight: bold;
   text-align: center;
 }
@@ -499,14 +509,14 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: #111827;
-  border: 1px solid #374151;
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
 
 .businessCard span,
 .historyCard span,
 .historyCard small {
-  color: #cbd5e1;
+  color: var(--muted);
 }
 
 .businessCard em,
@@ -527,10 +537,10 @@ button {
 }
 
 .empty {
-  border: 1px dashed #64748b;
+  border: 1px dashed var(--muted);
   padding: 24px;
   text-align: center;
-  color: #cbd5e1;
+  color: var(--muted);
   border-radius: 14px;
 }
 
@@ -559,17 +569,17 @@ button {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  background: #1f2937;
-  color: #f8fafc;
+  background: var(--surface);
+  color: var(--ink);
   border-radius: 20px;
   padding: var(--box-padding);
-  border: 1px solid #374151;
+  border: 1px solid var(--line);
 }
 
 .exportColumns {
   margin: 16px 0;
   padding: 12px;
-  border: 1px solid #64748b;
+  border: 1px solid var(--muted);
   border-radius: 12px;
 }
 
@@ -604,12 +614,12 @@ button {
   gap: 12px;
   margin: calc(0px - var(--box-padding)) calc(0px - var(--box-padding)) 0;
   padding: var(--box-padding) var(--box-padding) 8px;
-  background: #1f2937;
+  background: var(--surface);
   border-radius: 20px 20px 0 0;
 }
 
 .modalHead h2 {
-  color: #f97316;
+  color: var(--petrol);
   margin: 0;
 }
 
@@ -633,10 +643,10 @@ textarea {
   margin-top: 5px;
   padding: 12px;
   border-radius: 12px;
-  border: 2px solid #f59e0b;
+  border: 2px solid var(--line);
   font-size: 16px;
-  background: #f8fafc;
-  color: #111827;
+  background: var(--surface);
+  color: var(--ink);
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
   transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
@@ -644,11 +654,11 @@ textarea {
 select {
   appearance: none;
   background:
-    linear-gradient(45deg, transparent 50%, #111827 50%) calc(100% - 22px) 50% / 7px 7px no-repeat,
-    linear-gradient(135deg, #111827 50%, transparent 50%) calc(100% - 16px) 50% / 7px 7px no-repeat,
-    linear-gradient(90deg, rgba(249, 115, 22, 0.14), rgba(249, 115, 22, 0.04)),
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%) calc(100% - 22px) 50% / 7px 7px no-repeat,
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%) calc(100% - 16px) 50% / 7px 7px no-repeat,
+    linear-gradient(90deg, rgba(22, 91, 97, 0.14), rgba(22, 91, 97, 0.04)),
     #fff7ed;
-  border-color: #fb923c;
+  border-color: var(--petrol);
   font-weight: 700;
   padding-right: 42px;
 }
@@ -656,15 +666,15 @@ select {
 input:hover,
 select:hover,
 textarea:hover {
-  border-color: #fb923c;
+  border-color: var(--petrol);
   background: #ffffff;
 }
 
 select:hover {
   background:
-    linear-gradient(45deg, transparent 50%, #111827 50%) calc(100% - 22px) 50% / 7px 7px no-repeat,
-    linear-gradient(135deg, #111827 50%, transparent 50%) calc(100% - 16px) 50% / 7px 7px no-repeat,
-    linear-gradient(90deg, rgba(249, 115, 22, 0.22), rgba(249, 115, 22, 0.08)),
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%) calc(100% - 22px) 50% / 7px 7px no-repeat,
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%) calc(100% - 16px) 50% / 7px 7px no-repeat,
+    linear-gradient(90deg, rgba(22, 91, 97, 0.22), rgba(22, 91, 97, 0.08)),
     #fffbeb;
 }
 
@@ -672,22 +682,22 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: #f97316;
+  border-color: var(--petrol);
   background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.24);
+  box-shadow: 0 0 0 4px rgba(22, 91, 97, 0.24);
 }
 
 select:focus {
   background:
-    linear-gradient(45deg, transparent 50%, #111827 50%) calc(100% - 22px) 50% / 7px 7px no-repeat,
-    linear-gradient(135deg, #111827 50%, transparent 50%) calc(100% - 16px) 50% / 7px 7px no-repeat,
-    linear-gradient(90deg, rgba(249, 115, 22, 0.24), rgba(249, 115, 22, 0.1)),
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%) calc(100% - 22px) 50% / 7px 7px no-repeat,
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%) calc(100% - 16px) 50% / 7px 7px no-repeat,
+    linear-gradient(90deg, rgba(22, 91, 97, 0.24), rgba(22, 91, 97, 0.1)),
     #ffffff;
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #64748b;
+  color: var(--muted);
 }
 
 .checkLine {
@@ -695,7 +705,7 @@ textarea::placeholder {
   align-items: center;
   gap: 10px;
   margin-top: 12px;
-  color: #cbd5e1;
+  color: var(--muted);
   font-weight: normal;
 }
 
@@ -709,11 +719,11 @@ textarea {
 }
 
 .notes {
-  background: #111827;
+  background: var(--surface);
   padding: 12px;
   border-radius: 12px;
   white-space: pre-wrap;
-  border: 1px solid #374151;
+  border: 1px solid var(--line);
 }
 .deleteBtn {
   width: 100%;
@@ -997,7 +1007,7 @@ textarea {
 
 .targetListMessage {
   margin: 8px 0 14px;
-  color: #fbbf24;
+  color: #936014;
 }
 
 .cloudBox {
@@ -1014,12 +1024,12 @@ textarea {
 
 .cloudStatus {
   margin: 16px 0 0;
-  color: #67e8f9;
+  color: var(--petrol);
 }
 
 .leadDistanceMessage {
   margin: 8px 0 14px;
-  color: #67e8f9;
+  color: var(--petrol);
 }
 
 .targetListCards,
@@ -1038,19 +1048,19 @@ textarea {
   align-items: flex-start;
   gap: 5px;
   text-align: left;
-  background: #111827;
-  border-color: #374151;
+  background: var(--surface);
+  border-color: var(--line);
 }
 
 .targetListCard span,
 .targetListCard small,
 .targetLeadCard p,
 .targetLeadHead span {
-  color: #cbd5e1;
+  color: var(--muted);
 }
 
 .targetListCard small {
-  color: #fb923c;
+  color: var(--petrol);
 }
 
 .backToListsBtn {
@@ -1094,7 +1104,7 @@ textarea {
   align-items: center;
   gap: 10px;
   margin: 0 0 14px;
-  color: #cbd5e1;
+  color: var(--muted);
 }
 
 .leadDistanceSort select {
@@ -1104,9 +1114,9 @@ textarea {
 }
 
 .targetLeadCard {
-  border: 1px solid #374151;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: #111827;
+  background: var(--surface);
   padding: 14px;
 }
 
@@ -1116,7 +1126,7 @@ textarea {
 
 .targetLeadCard.discarded {
   opacity: 0.68;
-  border-color: #64748b;
+  border-color: var(--muted);
 }
 
 .targetLeadHead {
@@ -1135,7 +1145,7 @@ textarea {
 }
 
 .targetLeadCard .leadDistance {
-  color: #67e8f9;
+  color: var(--petrol);
   font-weight: 700;
 }
 
@@ -1143,8 +1153,8 @@ textarea {
   flex: 0 0 auto;
   padding: 4px 8px;
   border-radius: 999px;
-  color: #111827;
-  background: #fbbf24;
+  color: var(--ink);
+  background: #936014;
   font-size: 12px;
   font-style: normal;
   font-weight: bold;
@@ -1167,10 +1177,10 @@ textarea {
   align-items: center;
   min-height: 36px;
   padding: 7px 10px;
-  border: 1px solid #4b5563;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #374151;
-  color: #f8fafc;
+  background: var(--line);
+  color: var(--ink);
   font-size: 14px;
   text-decoration: none;
 }
@@ -1193,9 +1203,9 @@ textarea {
   gap: 10px;
   margin: 0;
   padding: 12px;
-  border: 1px solid #374151;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #111827;
+  background: var(--surface);
 }
 
 .leadMatchItem input {
@@ -1206,7 +1216,7 @@ textarea {
   padding: 0;
   border: none;
   box-shadow: none;
-  accent-color: #f97316;
+  accent-color: var(--petrol);
 }
 
 .leadMatchItem span {
@@ -1216,7 +1226,7 @@ textarea {
 }
 
 .leadMatchItem small {
-  color: #cbd5e1;
+  color: var(--muted);
   font-weight: normal;
 }
 
@@ -1260,4 +1270,140 @@ textarea {
   .leadMatchItem {
     font-size: clamp(16px, 2vw, 20px);
   }
+}
+
+/* Marfil y petróleo */
+body, .app { background: var(--canvas); }
+.app { padding: 0 32px 36px; max-width: 1440px; margin: auto; }
+button, input, select, textarea { font-family: inherit; }
+button { background: var(--surface); min-height: 44px; }
+button:hover:not(:disabled) { background: var(--soft); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 3px solid var(--petrol); outline-offset: 3px;
+}
+.topbar {
+  margin: 0 -32px 0; padding: 18px 32px;
+  border-bottom: 1px solid var(--line); border-radius: 0;
+  gap: 20px; flex-wrap: wrap;
+}
+.brandBlock { gap: 10px; }
+.brandLogo { width: 72px; max-width: none; filter: none; }
+.brandName { font-size: 22px; white-space: nowrap; }
+.mainNav { display: flex; flex-wrap: wrap; gap: 6px; }
+.mainNav button { border: 0; color: var(--muted); background: transparent; }
+.mainNav button.active { color: var(--petrol); background: var(--soft); }
+.profileButton {
+  display: flex; gap: 10px; align-items: center; text-align: left;
+  border: 0; margin-left: auto; max-width: 280px; font-size: 12px;
+}
+.profileButton > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.profileButton strong { display: block; font-size: 14px; margin-top: 3px; }
+.avatar {
+  display: grid; place-items: center; flex: 0 0 40px;
+  height: 40px; border-radius: 50%; background: var(--soft);
+  color: var(--petrol); font-size: 19px; font-weight: 700;
+}
+.agendaHeading { display: flex; justify-content: space-between; align-items: start; gap: 20px; padding: 32px 0; }
+h1 { color: var(--ink); text-transform: none; font-size: 30px; letter-spacing: -.7px; }
+.currentDate { text-transform: capitalize; margin: 6px 0; }
+.syncStatus { font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 520px; }
+.headingActions { display: flex; gap: 10px; flex-shrink: 0; }
+.headingActions .mainBtn { width: auto; margin: 0; }
+.layout { grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 24px; }
+.calendarPanel, .side { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 24px; min-width: 0; }
+.calendarHeading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.calendarHeading h2 { text-transform: capitalize; font-size: 20px; margin: 0; }
+.calendarHeading .buttons button { padding: 8px 13px; min-width: 42px; font-size: 17px; }
+.calendarViewport { position: relative; }
+.calendar { padding: 0; gap: 6px; border-radius: 0; }
+.weekday { font-size: 13px; font-weight: 400; color: var(--muted); padding: 12px 0; }
+.day {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 76px; min-height: 76px; max-height: 76px; padding: 6px 3px;
+  background: transparent; border: 1px solid transparent; border-radius: 11px;
+}
+.day:hover { background: var(--soft); }
+.day.selected { border: 1px solid var(--petrol); background: var(--soft); }
+.day.closed { background: #fff6e7; }
+.day.closed.selected { background: var(--soft); }
+.day.muted { opacity: .45; }
+.dayHead { justify-content: center; margin: 0 0 7px; }
+.dayHead span { font-size: 14px; line-height: 1.4; }
+.day.selected .dayHead span { font-weight: 700; }
+.today { background: var(--petrol); color: white; border-radius: 6px; padding: 0 5px; }
+.holiday { color: var(--muted); font-weight: normal; }
+.today.holiday { color: white; }
+.dayDots { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; min-height: 12px; }
+.eventDot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+.reminderDot { background: #a855f7; }
+.closedMark { color: #936014; font-weight: 700; font-style: normal; font-size: 15px; line-height: 10px; }
+.dotOverflow { font-size: 10px; color: var(--muted); }
+.calendarLegend { display: flex; flex-wrap: wrap; gap: 12px 18px; border-top: 1px solid var(--line); margin-top: 22px; padding-top: 18px; }
+.calendarLegend > span { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.side h2 { color: var(--ink); font-size: 20px; margin: 0 0 8px; }
+.mainBtn, .searchTabs button.active, .scheduleDay.selected { background: var(--petrol); color: white; border-color: var(--petrol); }
+.mainBtn:hover:not(:disabled), .searchTabs button.active:hover, .scheduleDay.selected:hover { background: #10484d; }
+.orangeBtn { background: var(--soft); color: var(--petrol); border: 1px solid var(--line); }
+.secondaryBtn { background: var(--surface); margin-bottom: 10px; }
+.saveOptions { margin: 4px 0 24px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.saveOptions summary { cursor: pointer; padding: 12px 0; color: var(--petrol); font-size: 14px; }
+.saveOptions[open] summary { margin-bottom: 8px; }
+.saveOptions .secondaryBtn { text-align: left; font-size: 14px; }
+.visitCard { border: 0; border-left: 5px solid var(--line); border-radius: 3px; padding: 6px 15px 14px; margin: 8px 0; gap: 7px; }
+.visitCard strong { font-size: 18px; font-weight: 600; }
+.visitCard span, .visitCard small { font-size: 14px; color: var(--muted); }
+.visitCard em, .businessCard em, .historyCard em { color: #14232b; font-weight: 600; }
+.visitList { gap: 14px; }
+input, select, textarea { background: white; border: 1px solid #9eb6b8; box-shadow: none; }
+select, select:hover, select:focus {
+  background: white; appearance: auto; padding-right: 12px; font-weight: 400;
+}
+input:hover, select:hover, textarea:hover { border-color: var(--petrol); }
+.box { border-color: var(--line); box-shadow: 0 16px 60px rgba(24,51,61,.16); }
+.modal { background: rgba(24,51,61,.35); }
+.profileSave { margin-top: 12px; }
+.mapActions a { color: var(--petrol); background: var(--soft); }
+.leadStatus { background: #fef3c7; color: #78350f; }
+.leadStatus.visited { color: #14232b; }
+.leadStatus.discarded { color: #14232b; }
+.dangerMiniBtn { color: #991b1b; background: #fff1f2; border-color: #fecdd3; }
+.deleteBtn { background: #b91c1c; }
+.deleteBtn:hover:not(:disabled) { background: #991b1b; }
+@media (max-width: 850px), (max-device-width: 850px), (hover: none) and (pointer: coarse) and (max-width: 1200px) {
+  .app { padding: 0 12px 24px; }
+  .topbar { margin: 0 -12px; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 12px; }
+  .brandLogo { width: 56px; }
+  .brandName { font-size: 18px; }
+  .profileButton { max-width: 170px; padding: 4px; font-size: 11px; margin: 0; }
+  .profileButton strong { font-size: 12px; }
+  .avatar { flex-basis: 32px; height: 32px; font-size: 16px; }
+  .mainNav { grid-row: 2; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .mainNav button { padding: 8px 4px; font-size: 13px; }
+  .agendaHeading { flex-direction: column; gap: 16px; padding: 24px 4px; }
+  h1 { font-size: 27px; }
+  .small { font-size: 14px; }
+  .headingActions { width: 100%; }
+  .headingActions > button { flex: 1; min-height: 48px; font-size: 16px; }
+  .layout { display: block; }
+  .calendarPanel, .side { padding: 16px; border-radius: 16px; }
+  .calendarHeading { flex-wrap: wrap; }
+  .calendarHeading h2 { font-size: 19px; }
+  .calendarHeading .buttons { align-self: auto; }
+  .calendarHeading .buttons button { min-height: 44px; min-width: 40px; padding: 8px 10px; font-size: 17px; }
+  .calendarViewport { margin-bottom: 0; border-radius: 0; }
+  .calendar { grid-template-columns: repeat(7, clamp(72px, 20.5vw, 180px)); gap: 6px; padding: 0; }
+  .day { height: 88px; min-height: 88px; max-height: 88px; }
+  .dayHead span { font-size: 18px; }
+  .weekday { font-size: 15px; }
+  .calendarLegend { gap: 12px; margin-top: 16px; }
+  .side { margin-top: 16px; }
+  .side h2 { font-size: 22px; }
+  .visitCard strong { font-size: 19px; }
+  .visitCard span, .visitCard small { font-size: 16px; }
+}
+@media (max-width: 380px) {
+  .brandName { font-size: 16px; }
+  .brandBlock { gap: 4px; }
+  .profileButton { max-width: 140px; gap: 6px; }
 }

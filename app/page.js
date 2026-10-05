@@ -913,7 +913,12 @@ export default function App() {
       .then(({ data }) => inspectCloudAccount(data.session?.user || null))
       .catch(() => setCloudStatus("No se ha podido iniciar la conexión con Supabase."));
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "USER_UPDATED" || event === "TOKEN_REFRESHED") {
+        cloudUserRef.current = session?.user || null;
+        setCloudUser(session?.user || null);
+        return;
+      }
       window.setTimeout(() => inspectCloudAccount(session?.user || null), 0);
     });
 
@@ -1241,6 +1246,29 @@ export default function App() {
       }
     } catch {
       setCloudAuthMessage("No se ha podido conectar. Comprueba tu conexión e inténtalo de nuevo.");
+    } finally {
+      setCloudAuthBusy(false);
+    }
+  }
+
+  async function saveProfileName(e) {
+    e.preventDefault();
+    if (!supabase || !cloudUser || cloudAuthBusy) return;
+    const name = String(new FormData(e.currentTarget).get("displayName") || "").trim();
+    if (!name || name.length > 60) {
+      setCloudAuthMessage("Escribe un nombre de entre 1 y 60 caracteres.");
+      return;
+    }
+    setCloudAuthBusy(true);
+    setCloudAuthMessage("");
+    try {
+      const { data, error } = await supabase.auth.updateUser({ data: { display_name: name } });
+      if (error) throw error;
+      cloudUserRef.current = data.user;
+      setCloudUser(data.user);
+      setCloudAuthMessage("Nombre guardado.");
+    } catch {
+      setCloudAuthMessage("No se ha podido guardar el nombre. Inténtalo de nuevo.");
     } finally {
       setCloudAuthBusy(false);
     }
@@ -2284,6 +2312,9 @@ export default function App() {
     reader.readAsText(file);
   }
 
+  const profileName = cloudUser?.user_metadata?.display_name
+    || cloudUser?.user_metadata?.full_name || cloudUser?.email || "Mi cuenta";
+
   return (
     <div className="app">
       <div className="topbar">
@@ -2297,24 +2328,41 @@ export default function App() {
             priority
           />
           <div>
-            <div className="small">Agenda de visitas realizadas</div>
-            <h1>
-              {monthDate.toLocaleDateString("es-ES", {
-                month: "long",
-                year: "numeric",
-              })}
-            </h1>
+            <strong className="brandName">Visitas Pro</strong>
           </div>
         </div>
-
-        <div className="buttons">
-          <button onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}>‹</button>
-          <button onClick={() => { setMonthDate(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(todayKey); }}>Hoy</button>
-          <button onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}>›</button>
+        <nav className="mainNav" aria-label="Navegación principal">
+          <button className="active" onClick={scrollToCalendar}>Calendario</button>
+          <button onClick={() => { setShowTargetLists(true); setOpenTargetListId(null); setLeadImportMessage(""); }}>Clientes objetivos</button>
+          <button onClick={() => { setSearchScope("reminders"); setSearchTerm(""); setShowSearch(true); }}>Recordatorios</button>
+        </nav>
+        <button className="profileButton" onClick={() => setShowCloudAccount(true)}>
+          <span className="avatar" aria-hidden="true">{cloudUser ? profileName.slice(0, 1).toLocaleUpperCase("es") : "V"}</span>
+          <span>{cloudUser ? <>Sesión iniciada como <strong>{profileName}</strong></> : "Iniciar sesión"}</span>
+        </button>
+      </div>
+      <div className="agendaHeading">
+        <div>
+          <h1>Tu agenda comercial</h1>
+          <p className="small currentDate">{today.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+          <p className="syncStatus" role="status">{cloudUser ? cloudStatus || "Comprobando conexión…" : "Guardado en este dispositivo"}</p>
+        </div>
+        <div className="headingActions">
+          <button onClick={openExcelExport}>↓ Excel</button>
+          <button className="mainBtn" onClick={openNewVisitForm}>+ Nueva visita</button>
         </div>
       </div>
 
       <div className="layout">
+        <section className="calendarPanel" aria-label="Calendario de visitas">
+          <div className="calendarHeading">
+            <h2>{monthDate.toLocaleDateString("es-ES", { month: "long", year: "numeric" })}</h2>
+            <div className="buttons">
+              <button aria-label="Mes anterior" onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}>‹</button>
+              <button onClick={() => { setMonthDate(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(todayKey); }}>Hoy</button>
+              <button aria-label="Mes siguiente" onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}>›</button>
+            </div>
+          </div>
         <div className="calendarViewport" ref={calendarRef}>
           <div className="calendar">
           {["L", "M", "X", "J", "V", "S", "D"].map(d => (
@@ -2334,14 +2382,16 @@ export default function App() {
               <button
                 key={key}
                 data-date-key={key}
+                aria-pressed={isSelected}
+                aria-current={isToday ? "date" : undefined}
+                aria-label={`${formatVisitDate(key)}: ${dayVisits.length} visitas, ${(remindersByDay[key] || []).length} recordatorios${closed ? ", día cerrado" : ""}`}
                 className={`day ${!isCurrentMonth ? "muted" : ""} ${isSelected ? "selected" : ""} ${closed ? "closed" : ""}`}
                 onClick={() => selectCalendarDay(key)}
               >
                 {(() => {
                   const dayReminders = remindersByDay[key] || [];
-                  const visitTagCount = Math.min(dayVisits.length, 4);
-                  const reminderTagCount = Math.max(0, 5 - visitTagCount);
                   const totalDayItems = dayVisits.length + dayReminders.length;
+                  const visibleDotCount = Math.min(dayVisits.length, dayReminders.length ? 3 : 4) + (dayReminders.length ? 1 : 0);
 
                   return (
                     <>
@@ -2349,30 +2399,14 @@ export default function App() {
                   <span className={`${isToday ? "today" : ""} ${isSunday ? "holiday" : ""}`}>
                     {day.getDate()}
                   </span>
-                      {totalDayItems > 0 && <b>{totalDayItems}</b>}
                 </div>
-
-                {closed && <div className="closedTag">Cerrado / no trabajado</div>}
-
-                <div className="tags">
-                      {dayVisits.slice(0, 4).map(v => (
-                    <div
-                      key={v.id}
-                      className="tag"
-                      style={{ backgroundColor: colorValue(v.visitValue) }}
-                    >
-                      {v.businessName}
-                    </div>
+                <div className="dayDots" aria-hidden="true">
+                  {dayVisits.slice(0, dayReminders.length ? 3 : 4).map(v => (
+                    <span key={v.id} className="eventDot" style={{ backgroundColor: colorValue(v.visitValue) }} />
                   ))}
-                      {dayReminders.slice(0, reminderTagCount).map(reminder => (
-                        <div
-                          key={reminder.id}
-                          className="tag reminderTag"
-                        >
-                          Volver: {reminder.businessName}
-                        </div>
-                      ))}
-                      {totalDayItems > 5 && <div className="more">+{totalDayItems - 5} más</div>}
+                  {dayReminders.length > 0 && <span className="eventDot reminderDot" />}
+                  {closed && <span className="closedMark">—</span>}
+                  {totalDayItems > visibleDotCount && <span className="dotOverflow">+{totalDayItems - visibleDotCount}</span>}
                 </div>
                     </>
                   );
@@ -2382,6 +2416,12 @@ export default function App() {
           })}
           </div>
         </div>
+          <div className="calendarLegend">
+            {valores.map(v => <span key={v.value}><i className="eventDot" style={{ backgroundColor: v.color }} />{v.label.split(" - ")[0]}</span>)}
+            <span><i className="eventDot reminderDot" />Recordatorio</span>
+            <span><i className="closedMark">—</i>Cerrado</span>
+          </div>
+        </section>
 
         <div className="side" ref={summaryRef}>
           <button type="button" className="backToCalendarBtn" onClick={scrollToCalendar}>
@@ -2396,37 +2436,11 @@ export default function App() {
             })}
           </h2>
 
-          <button className="mainBtn" onClick={openNewVisitForm}>
-            + Añadir visita
-          </button>
-
-          <button className="orangeBtn" onClick={() => setShowCloseForm(true)}>
-            Cerrar día / parte del día
-          </button>
-
-          <button className="secondaryBtn" onClick={() => setShowSearch(true)}>
-            🔎 Buscar visitas y recordatorios
-          </button>
-
-          <button
-            className="secondaryBtn"
-            onClick={() => {
-              setShowTargetLists(true);
-              setOpenTargetListId(null);
-              setLeadImportMessage("");
-            }}
-          >
-            Listas de clientes objetivos{targetLists.length ? ` (${targetLists.length})` : ""}
-          </button>
-
-          <button className="secondaryBtn" onClick={() => setShowCloudAccount(true)}>
-            {cloudUser && cloudSyncEnabled ? "☁ Nube sincronizada" : "☁ Cuenta y nube"}
-          </button>
-
-          <button className="secondaryBtn" onClick={openExcelExport}>
-            Exportar visitas a Excel
-          </button>
-
+          <p className="small">{selectedVisits.length} visitas · {selectedReminders.length} recordatorios</p>
+          <button className="secondaryBtn" onClick={() => { setSearchScope("visits"); setShowSearch(true); }}>Buscar visitas y recordatorios</button>
+          <button className="orangeBtn" onClick={() => setShowCloseForm(true)}>Cerrar día / parte del día</button>
+          <details className="saveOptions">
+            <summary>Opciones de guardado</summary>
           <button className="secondaryBtn" onClick={exportCSV} disabled={selectedVisits.length === 0}>
             Exportar día a CSV
           </button>
@@ -2438,6 +2452,7 @@ export default function App() {
           <button className="secondaryBtn" onClick={() => importInputRef.current?.click()}>
             Importar backup
           </button>
+          </details>
 
           <input
             ref={importInputRef}
@@ -2494,7 +2509,7 @@ export default function App() {
             ))}
 
             {selectedVisits.map(v => (
-              <button className="visitCard" key={v.id} onClick={() => setOpenVisit(v)}>
+              <button className="visitCard" style={{ borderLeftColor: colorValue(v.visitValue) }} key={v.id} onClick={() => setOpenVisit(v)}>
                 <strong>{v.businessName}</strong>
                 <span>{v.contactName || "Sin referente"}</span>
                 <span>{v.locality || "Sin localidad"}{v.neighborhood ? ` · ${v.neighborhood}` : ""}</span>
@@ -2659,7 +2674,7 @@ export default function App() {
         <div className="modal">
           <div className="box cloudBox">
             <div className="modalHead">
-              <h2>Cuenta y guardado online</h2>
+              <h2>{cloudUser ? "Mi perfil y cuenta" : "Cuenta y guardado online"}</h2>
               <button type="button" onClick={() => setShowCloudAccount(false)}>×</button>
             </div>
 
@@ -2701,6 +2716,13 @@ export default function App() {
             ) : (
               <div className="cloudAccountActions">
                 <p className="small">Conectado como {cloudUser.email || "tu cuenta"}.</p>
+                <form onSubmit={saveProfileName}>
+                  <label htmlFor="profile-name">Tu nombre</label>
+                  <input id="profile-name" name="displayName" key={cloudUser.id + (cloudUser.user_metadata?.display_name || "")}
+                    defaultValue={cloudUser.user_metadata?.display_name || cloudUser.user_metadata?.full_name || ""}
+                    required maxLength={60} autoComplete="given-name" placeholder="Ej. Alessandro" disabled={cloudAuthBusy} />
+                  <button className="secondaryBtn profileSave" type="submit" disabled={cloudAuthBusy}>Guardar nombre</button>
+                </form>
                 {cloudHasData && !cloudSyncEnabled && (
                   <button type="button" className="mainBtn" onClick={loadCloudData}>
                     Cargar copia online

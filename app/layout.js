@@ -1,15 +1,4 @@
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata = {
   title: "Visitas Pro App",
@@ -22,6 +11,7 @@ export const metadata = {
 };
 
 export const viewport = {
+  themeColor: "#165b61",
   width: "device-width",
   initialScale: 1,
   minimumScale: 1,
@@ -32,10 +22,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html
-      lang="es"
-      className={`${geistSans.variable} ${geistMono.variable}`}
-    >
+    <html lang="es">
       <body>{children}</body>
     </html>
   );
