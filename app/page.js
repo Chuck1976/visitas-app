@@ -2391,7 +2391,9 @@ export default function App() {
                 {(() => {
                   const dayReminders = remindersByDay[key] || [];
                   const totalDayItems = dayVisits.length + dayReminders.length;
-                  const visibleDotCount = Math.min(dayVisits.length, dayReminders.length ? 3 : 4) + (dayReminders.length ? 1 : 0);
+                  const visibleVisits = dayVisits.slice(0, dayReminders.length ? 3 : 4);
+                  const visibleReminders = dayReminders.slice(0, 4 - visibleVisits.length);
+                  const visibleItemCount = visibleVisits.length + visibleReminders.length;
 
                   return (
                     <>
@@ -2400,13 +2402,21 @@ export default function App() {
                     {day.getDate()}
                   </span>
                 </div>
-                <div className="dayDots" aria-hidden="true">
-                  {dayVisits.slice(0, dayReminders.length ? 3 : 4).map(v => (
-                    <span key={v.id} className="eventDot" style={{ backgroundColor: colorValue(v.visitValue) }} />
+                <div className="dayEntries" aria-hidden="true">
+                  {visibleVisits.map(v => (
+                    <span key={v.id} className="dayEntry" title={v.businessName}>
+                      <span className="eventDot" style={{ backgroundColor: colorValue(v.visitValue) }} />
+                      <span className="entryName">{v.businessName}</span>
+                    </span>
                   ))}
-                  {dayReminders.length > 0 && <span className="eventDot reminderDot" />}
-                  {closed && <span className="closedMark">—</span>}
-                  {totalDayItems > visibleDotCount && <span className="dotOverflow">+{totalDayItems - visibleDotCount}</span>}
+                  {visibleReminders.map(reminder => (
+                    <span key={reminder.id} className="dayEntry" title={`Volver: ${reminder.businessName}`}>
+                      <span className="eventDot reminderDot" />
+                      <span className="entryName">{reminder.businessName}</span>
+                    </span>
+                  ))}
+                  {closed && <span className="dayClosed">— Cerrado</span>}
+                  {totalDayItems > visibleItemCount && <span className="dotOverflow">+{totalDayItems - visibleItemCount} más</span>}
                 </div>
                     </>
                   );

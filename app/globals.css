@@ -1319,22 +1319,25 @@ h1 { color: var(--ink); text-transform: none; font-size: 30px; letter-spacing: -
 .calendar { padding: 0; gap: 6px; border-radius: 0; }
 .weekday { font-size: 13px; font-weight: 400; color: var(--muted); padding: 12px 0; }
 .day {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  height: 76px; min-height: 76px; max-height: 76px; padding: 6px 3px;
-  background: transparent; border: 1px solid transparent; border-radius: 11px;
+  display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
+  height: 154px; min-height: 154px; max-height: 154px; padding: 8px 6px;
+  background: transparent; border: 1px solid #c5d5d6; border-radius: 8px;
 }
 .day:hover { background: var(--soft); }
 .day.selected { border: 1px solid var(--petrol); background: var(--soft); }
 .day.closed { background: #fff6e7; }
 .day.closed.selected { background: var(--soft); }
 .day.muted { opacity: .45; }
-.dayHead { justify-content: center; margin: 0 0 7px; }
+.dayHead { justify-content: flex-start; margin: 0 0 7px; }
 .dayHead span { font-size: 14px; line-height: 1.4; }
 .day.selected .dayHead span { font-weight: 700; }
 .today { background: var(--petrol); color: white; border-radius: 6px; padding: 0 5px; }
 .holiday { color: var(--muted); font-weight: normal; }
 .today.holiday { color: white; }
-.dayDots { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; min-height: 12px; }
+.dayEntries { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.dayEntry { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 12px; line-height: 1.25; color: var(--ink); }
+.entryName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dayClosed { font-size: 11px; color: #795011; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .eventDot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
 .reminderDot { background: #a855f7; }
 .closedMark { color: #936014; font-weight: 700; font-style: normal; font-size: 15px; line-height: 10px; }
@@ -1373,37 +1376,43 @@ input:hover, select:hover, textarea:hover { border-color: var(--petrol); }
 @media (max-width: 850px), (max-device-width: 850px), (hover: none) and (pointer: coarse) and (max-width: 1200px) {
   .app { padding: 0 12px 24px; }
   .topbar { margin: 0 -12px; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 12px; }
-  .brandLogo { width: 56px; }
-  .brandName { font-size: 18px; }
-  .profileButton { max-width: 170px; padding: 4px; font-size: 11px; margin: 0; }
-  .profileButton strong { font-size: 12px; }
-  .avatar { flex-basis: 32px; height: 32px; font-size: 16px; }
-  .mainNav { grid-row: 2; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
-  .mainNav button { padding: 8px 4px; font-size: 13px; }
+  .brandLogo { width: clamp(72px, 12vw, 120px); }
+  .brandName { font-size: clamp(23px, 3.5vw, 34px); }
+  .profileButton { grid-column: 1 / -1; max-width: 100%; padding: 4px; font-size: clamp(15px, 2.3vw, 23px); margin: 0; }
+  .profileButton strong { font-size: clamp(17px, 2.6vw, 26px); }
+  .avatar { flex-basis: 42px; height: 42px; font-size: 22px; }
+  .mainNav { grid-row: 3; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .mainNav button { padding: 12px 5px; font-size: clamp(15px, 2.5vw, 24px); }
   .agendaHeading { flex-direction: column; gap: 16px; padding: 24px 4px; }
-  h1 { font-size: 27px; }
-  .small { font-size: 14px; }
+  h1 { font-size: clamp(30px, 4.5vw, 44px); }
+  .small, .syncStatus { font-size: clamp(16px, 2.4vw, 23px); }
   .headingActions { width: 100%; }
-  .headingActions > button { flex: 1; min-height: 48px; font-size: 16px; }
+  .headingActions > button { flex: 1; min-height: 54px; font-size: clamp(18px, 2.8vw, 27px); }
   .layout { display: block; }
   .calendarPanel, .side { padding: 16px; border-radius: 16px; }
   .calendarHeading { flex-wrap: wrap; }
-  .calendarHeading h2 { font-size: 19px; }
+  .calendarHeading h2 { font-size: clamp(22px, 3.2vw, 32px); }
   .calendarHeading .buttons { align-self: auto; }
-  .calendarHeading .buttons button { min-height: 44px; min-width: 40px; padding: 8px 10px; font-size: 17px; }
+  .calendarHeading .buttons button { min-height: 48px; min-width: 46px; padding: 8px 12px; font-size: clamp(20px, 3vw, 30px); }
   .calendarViewport { margin-bottom: 0; border-radius: 0; }
-  .calendar { grid-template-columns: repeat(7, clamp(72px, 20.5vw, 180px)); gap: 6px; padding: 0; }
-  .day { height: 88px; min-height: 88px; max-height: 88px; }
-  .dayHead span { font-size: 18px; }
-  .weekday { font-size: 15px; }
+  .calendar { grid-template-columns: repeat(7, clamp(100px, 24vw, 260px)); gap: 6px; padding: 0; }
+  .day { height: clamp(180px, 25vw, 260px); min-height: clamp(180px, 25vw, 260px); max-height: clamp(180px, 25vw, 260px); padding: 8px; }
+  .dayHead span { font-size: clamp(21px, 3vw, 30px); }
+  .weekday { font-size: clamp(18px, 2.6vw, 26px); }
+  .dayEntry { font-size: clamp(14px, 2.3vw, 23px); gap: 6px; }
+  .dayEntries { gap: 6px; }
+  .dayClosed, .dotOverflow { font-size: clamp(12px, 2vw, 20px); }
+  .eventDot { width: 9px; height: 9px; flex-basis: 9px; }
+  .calendarLegend > span { font-size: clamp(14px, 2.2vw, 21px); }
+  .saveOptions summary, .saveOptions .secondaryBtn { font-size: clamp(17px, 2.5vw, 25px); }
   .calendarLegend { gap: 12px; margin-top: 16px; }
   .side { margin-top: 16px; }
-  .side h2 { font-size: 22px; }
-  .visitCard strong { font-size: 19px; }
-  .visitCard span, .visitCard small { font-size: 16px; }
+  .side h2 { font-size: clamp(26px, 3.6vw, 36px); }
+  .visitCard strong { font-size: clamp(21px, 3vw, 30px); }
+  .visitCard span, .visitCard small { font-size: clamp(18px, 2.6vw, 26px); }
 }
 @media (max-width: 380px) {
-  .brandName { font-size: 16px; }
+  .brandName { font-size: 23px; }
   .brandBlock { gap: 4px; }
-  .profileButton { max-width: 140px; gap: 6px; }
+  .profileButton { max-width: 100%; gap: 8px; }
 }
