@@ -676,6 +676,8 @@ export default function App() {
   const cloudSaveTimerRef = useRef(null);
   const cloudUserRef = useRef(null);
   const cloudSyncEnabledRef = useRef(false);
+  const loadCloudDialogRef = useRef(null);
+  const [cloudLoadBusy, setCloudLoadBusy] = useState(false);
 
   const [visits, setVisits] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
@@ -735,7 +737,7 @@ export default function App() {
   const [searchScope, setSearchScope] = useState("visits");
   const [searchMode, setSearchMode] = useState("businessName");
   const [searchTerm, setSearchTerm] = useState("");
-  const [reminderSearchFilter, setReminderSearchFilter] = useState("pending");
+  const [reminderSearchFilter, setReminderSearchFilter] = useState("all");
   const [showBadSearchResults, setShowBadSearchResults] = useState(false);
 
   const [closeForm, setCloseForm] = useState({
@@ -1001,8 +1003,8 @@ export default function App() {
     ? reminderPresetsForValue(pendingVisitSave.visit.visitValue)
     : [];
 
-  const activeReminders = useMemo(() => {
-    return reminders.filter(reminder => reminder.status === REMINDER_STATUS.pending);
+  const visibleRemindersForCalendar = useMemo(() => {
+    return reminders.filter(reminder => reminder.status !== REMINDER_STATUS.dismissed);
   }, [reminders]);
 
   const visitsByDay = useMemo(() => {
@@ -1016,12 +1018,12 @@ export default function App() {
 
   const remindersByDay = useMemo(() => {
     const map = {};
-    activeReminders.forEach(reminder => {
+    visibleRemindersForCalendar.forEach(reminder => {
       if (!map[reminder.dueDate]) map[reminder.dueDate] = [];
       map[reminder.dueDate].push(reminder);
     });
     return map;
-  }, [activeReminders]);
+  }, [visibleRemindersForCalendar]);
 
   const closedByDay = useMemo(() => {
     const map = {};
@@ -1193,32 +1195,40 @@ export default function App() {
   }
 
   async function loadCloudData() {
-    if (!supabase || !cloudUser) return;
+    if (!supabase || !cloudUser || cloudLoadBusy) return;
 
-    setCloudStatus("Cargando la copia online...");
-    const { data, error } = await supabase
-      .from("app_sync_state")
-      .select("payload")
-      .eq("user_id", cloudUser.id)
-      .maybeSingle();
-
-    if (error || !data?.payload) {
-      setCloudStatus("No se ha podido cargar la copia online.");
-      return;
-    }
-
+    setCloudLoadBusy(true);
     try {
-      const cloudData = validateImportedData(data.payload);
-      setVisits(cloudData.visits);
-      setClosedDays(cloudData.closedDays);
-      setReminders(cloudData.reminders);
-      setTargetLists(cloudData.targetLists);
-      saveData(cloudData);
-      cloudSyncEnabledRef.current = true;
-      setCloudSyncEnabled(true);
-      setCloudStatus("Copia online cargada. Los próximos cambios se sincronizarán automáticamente.");
+      setCloudStatus("Cargando la copia online...");
+      const { data, error } = await supabase
+        .from("app_sync_state")
+        .select("payload")
+        .eq("user_id", cloudUser.id)
+        .maybeSingle();
+
+      if (error || !data?.payload) {
+        setCloudStatus("No se ha podido cargar la copia online.");
+        return;
+      }
+
+      try {
+        const cloudData = validateImportedData(data.payload);
+        setVisits(cloudData.visits);
+        setClosedDays(cloudData.closedDays);
+        setReminders(cloudData.reminders);
+        setTargetLists(cloudData.targetLists);
+        saveData(cloudData);
+        cloudSyncEnabledRef.current = true;
+        setCloudSyncEnabled(true);
+        setCloudStatus("Copia online cargada. Los próximos cambios se sincronizarán automáticamente.");
+      } catch {
+        setCloudStatus("La copia online no tiene un formato válido.");
+      }
     } catch {
-      setCloudStatus("La copia online no tiene un formato válido.");
+      setCloudStatus("No se ha podido conectar. Tus datos actuales se conservan. Inténtalo de nuevo.");
+    } finally {
+      setCloudLoadBusy(false);
+      loadCloudDialogRef.current?.close();
     }
   }
 
@@ -2099,6 +2109,7 @@ export default function App() {
   }
 
   function markReminderDone(reminder) {
+    setReminderSearchFilter("all");
     updateReminderStatus(reminder.id, REMINDER_STATUS.done, {
       completedAt: new Date().toISOString(),
     });
@@ -2334,7 +2345,7 @@ export default function App() {
         <nav className="mainNav" aria-label="Navegación principal">
           <button className="active" onClick={scrollToCalendar}>Calendario</button>
           <button onClick={() => { setShowTargetLists(true); setOpenTargetListId(null); setLeadImportMessage(""); }}>Clientes objetivos</button>
-          <button onClick={() => { setSearchScope("reminders"); setSearchTerm(""); setShowSearch(true); }}>Recordatorios</button>
+          <button onClick={() => { setSearchScope("reminders"); setReminderSearchFilter("all"); setSearchTerm(""); setShowSearch(true); }}>Recordatorios</button>
         </nav>
         <button className="profileButton" onClick={() => setShowCloudAccount(true)}>
           <span className="avatar" aria-hidden="true">{cloudUser ? profileName.slice(0, 1).toLocaleUpperCase("es") : "V"}</span>
@@ -2348,7 +2359,7 @@ export default function App() {
           <p className="syncStatus" role="status">{cloudUser ? cloudStatus || "Comprobando conexión…" : "Guardado en este dispositivo"}</p>
         </div>
         <div className="headingActions">
-          <button onClick={openExcelExport}>↓ Excel</button>
+          <button className="excelBtn" onClick={openExcelExport}>↓ Excel</button>
           <button className="mainBtn" onClick={openNewVisitForm}>+ Nueva visita</button>
         </div>
       </div>
@@ -2410,8 +2421,8 @@ export default function App() {
                     </span>
                   ))}
                   {visibleReminders.map(reminder => (
-                    <span key={reminder.id} className="dayEntry" title={`Volver: ${reminder.businessName}`}>
-                      <span className="eventDot reminderDot" />
+                    <span key={reminder.id} className={`dayEntry ${reminder.status === REMINDER_STATUS.done ? "doneEntry" : ""}`} title={`${reminderStatusLabel(reminder.status)}: ${reminder.businessName}`}>
+                      {reminder.status === REMINDER_STATUS.done ? <span className="reminderCheck">✓</span> : <span className="eventDot reminderDot" />}
                       <span className="entryName">{reminder.businessName}</span>
                     </span>
                   ))}
@@ -2446,9 +2457,9 @@ export default function App() {
             })}
           </h2>
 
-          <p className="small">{selectedVisits.length} visitas · {selectedReminders.length} recordatorios</p>
-          <button className="secondaryBtn" onClick={() => { setSearchScope("visits"); setShowSearch(true); }}>Buscar visitas y recordatorios</button>
-          <button className="orangeBtn" onClick={() => setShowCloseForm(true)}>Cerrar día / parte del día</button>
+          <p className="small daySummary">{selectedVisits.length} visitas · {selectedReminders.length} recordatorios</p>
+          <button className="secondaryBtn searchVisitsBtn" onClick={() => { setSearchScope("visits"); setShowSearch(true); }}>Buscar visitas y recordatorios</button>
+          <button className="orangeBtn closeDayBtn" onClick={() => setShowCloseForm(true)}>Cerrar día / parte del día</button>
           <details className="saveOptions">
             <summary>Opciones de guardado</summary>
           <button className="secondaryBtn" onClick={exportCSV} disabled={selectedVisits.length === 0}>
@@ -2488,7 +2499,7 @@ export default function App() {
 
             {selectedReminders.map(reminder => (
               <div
-                className="reminderCard"
+                className={`reminderCard ${reminder.status === REMINDER_STATUS.done ? "doneReminder" : ""}`}
                 key={reminder.id}
               >
                 <strong>Volver a pasar</strong>
@@ -2497,8 +2508,9 @@ export default function App() {
                 <small>
                   Previsto para {formatVisitDate(reminder.dueDate)} · Origen: {labelValue(reminder.sourceVisitValue)}
                 </small>
-                <em>{reminderStatusLabel(reminder.status)}</em>
+                <em>{reminder.status === REMINDER_STATUS.done && "✓ "}{reminderStatusLabel(reminder.status)}</em>
                 <div className="reminderActions">
+                  {reminder.status === REMINDER_STATUS.pending && <>
                   <button type="button" onClick={() => openReminderReschedule(reminder)}>
                     Cambiar fecha
                   </button>
@@ -2511,6 +2523,7 @@ export default function App() {
                   <button type="button" onClick={() => dismissReminder(reminder)}>
                     Descartar
                   </button>
+                  </>}
                   <button type="button" onClick={() => openSourceVisitFromReminder(reminder)}>
                     Ver origen
                   </button>
@@ -2680,6 +2693,16 @@ export default function App() {
         </div>
       )}
 
+      <dialog ref={loadCloudDialogRef} className="cloudLoadDialog" aria-labelledby="cloud-load-title" aria-describedby="cloud-load-warning" onCancel={event => { if (cloudLoadBusy) event.preventDefault(); }}>
+        <h2 id="cloud-load-title">¿Cargar la copia online?</h2>
+        <p id="cloud-load-warning">Se borrarán los datos actuales de este dispositivo y se sustituirán por la copia online: visitas, recordatorios, cierres y clientes objetivos. Los cambios que no hayas subido se perderán.</p>
+        <p>Puedes cancelar y exportar un backup completo antes de continuar.</p>
+        <div className="cloudLoadDialogActions">
+          <button type="button" autoFocus disabled={cloudLoadBusy} onClick={() => loadCloudDialogRef.current?.close()}>Cancelar</button>
+          <button type="button" className="confirmCloudLoadBtn" disabled={cloudLoadBusy} onClick={loadCloudData}>{cloudLoadBusy ? "Cargando…" : "Sí, sustituir los datos actuales"}</button>
+        </div>
+      </dialog>
+
       {showCloudAccount && (
         <div className="modal">
           <div className="box cloudBox">
@@ -2734,11 +2757,11 @@ export default function App() {
                   <button className="secondaryBtn profileSave" type="submit" disabled={cloudAuthBusy}>Guardar nombre</button>
                 </form>
                 {cloudHasData && !cloudSyncEnabled && (
-                  <button type="button" className="mainBtn" onClick={loadCloudData}>
+                  <button type="button" className="mainBtn cloudLoadBtn" onClick={() => loadCloudDialogRef.current?.showModal()}>
                     Cargar copia online
                   </button>
                 )}
-                <button type="button" className="mainBtn" onClick={uploadLocalDataToCloud}>
+                <button type="button" className="mainBtn cloudUploadBtn" onClick={uploadLocalDataToCloud}>
                   {cloudSyncEnabled ? "Guardar copia ahora" : "Subir datos de este dispositivo"}
                 </button>
                 <form className="cloudAccessForm" onSubmit={saveCloudPassword}>
@@ -3432,7 +3455,7 @@ export default function App() {
 
               {searchScope === "reminders" && reminderSearchResults.map(reminder => (
                 <div
-                  className={`reminderCard searchReminderCard ${reminder.status !== REMINDER_STATUS.pending ? "mutedReminder" : ""}`}
+                  className={`reminderCard searchReminderCard ${reminder.status === REMINDER_STATUS.done ? "doneReminder" : reminder.status === REMINDER_STATUS.dismissed ? "mutedReminder" : ""}`}
                   key={reminder.id}
                 >
                   <strong>{reminder.businessName}</strong>
@@ -3443,7 +3466,7 @@ export default function App() {
                   </span>
                   <span>Previsto: {formatVisitDate(reminder.dueDate)}</span>
                   <small>Origen: {labelValue(reminder.sourceVisitValue)} el {formatVisitDate(reminder.originalVisitDate)}</small>
-                  <em>{reminderStatusLabel(reminder.status)}</em>
+                  <em>{reminder.status === REMINDER_STATUS.done && "✓ "}{reminderStatusLabel(reminder.status)}</em>
                   <div className="reminderActions">
                     {reminder.status === REMINDER_STATUS.pending && (
                       <>
